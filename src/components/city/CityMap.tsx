@@ -71,29 +71,55 @@ export function CityMap({
 
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_10%,transparent_40%,rgba(7,23,37,0.16)_100%)]" />
 
-      {LANDMARKS.map((landmark) => {
-        const anchor = landmarkAnchor(landmark)
+      {(() => {
         const width = wrapRef.current?.clientWidth ?? 2000
         const height = wrapRef.current?.clientHeight ?? 900
-        const rawX = anchor.x * map.scale + map.offsetX
-        const rawY = anchor.y * map.scale + map.offsetY
-        const x = Math.min(Math.max(rawX, 78), width - 78)
-        const y = Math.min(Math.max(rawY, 86), height - 14)
-        const Icon = ICONS[landmark.id]
-        const badge = badges?.[landmark.id]
-        const isActive = activeId === landmark.id
-        const isHovered = hovered === landmark.id
+        const narrow = width < 640
+        const edge = narrow ? 44 : 78
+        const minGapX = narrow ? 96 : 156
+        const stepY = narrow ? 56 : 72
+        const placed: { x: number; y: number }[] = []
 
-        if (rawX < -60 || rawX > width + 60 || rawY < -40) return null
+        return LANDMARKS.map((landmark) => {
+          const anchor = landmarkAnchor(landmark)
+          const rawX = anchor.x * map.scale + map.offsetX
+          const rawY = anchor.y * map.scale + map.offsetY
+          const x = Math.min(Math.max(rawX, edge), width - edge)
+          const minY = 84
+          const maxY = height - 14
+          const startY = Math.min(Math.max(rawY, minY), maxY)
+          const isFree = (candidate: number) =>
+            !placed.some((p) => Math.abs(p.x - x) < minGapX && Math.abs(p.y - candidate) < stepY)
+          let y = startY
+          for (let step = 1; !isFree(y) && step <= 8; step++) {
+            const up = Math.min(Math.max(rawY - step * stepY, minY), maxY)
+            if (isFree(up)) {
+              y = up
+              break
+            }
+            const down = Math.min(Math.max(rawY + step * stepY, minY), maxY)
+            if (isFree(down)) {
+              y = down
+              break
+            }
+          }
+          placed.push({ x, y })
 
-        return (
-          <div
-            key={landmark.id}
-            className="absolute z-20 -translate-x-1/2 -translate-y-full"
-            style={{ left: x, top: y }}
-            onMouseEnter={() => interactive && setHovered(landmark.id)}
-            onMouseLeave={() => setHovered(null)}
-          >
+          if (rawX < -60 || rawX > width + 60 || rawY < -40) return null
+
+          const Icon = ICONS[landmark.id]
+          const badge = badges?.[landmark.id]
+          const isActive = activeId === landmark.id
+          const isHovered = hovered === landmark.id
+
+          return (
+            <div
+              key={landmark.id}
+              className="absolute z-20 -translate-x-1/2 -translate-y-full"
+              style={{ left: x, top: y }}
+              onMouseEnter={() => interactive && setHovered(landmark.id)}
+              onMouseLeave={() => setHovered(null)}
+            >
             {interactive ? (
               <button
                 type="button"
@@ -145,7 +171,8 @@ export function CityMap({
             )}
           </div>
         )
-      })}
+        })
+      })()}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-ink/10 to-transparent" />
     </div>

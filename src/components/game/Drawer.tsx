@@ -1239,7 +1239,7 @@ function SalesPanel() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-[12px] font-bold text-ink">{deal.company}</p>
-                      <p className="text-[10px] text-ink-500">{deal.contact} · {number(deal.customers)} {industry.customerNounPlural}</p>
+                      <p className="text-[10px] text-ink-500">{deal.contact} · {number(deal.customers)} {deal.customers === 1 ? industry.customerNoun : industry.customerNounPlural}</p>
                     </div>
                     <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold', stage.tone)}>{stage.label}</span>
                   </div>
