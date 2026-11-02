@@ -6,6 +6,7 @@ import {
   BadgeCheck,
   Boxes,
   Building2,
+  Check,
   ChevronRight,
   CircleHelp,
   Compass,
@@ -42,6 +43,7 @@ import { Stat } from '../components/game/bits'
 import { useGame } from '../game/store'
 import { buildInsights, getMetrics, RUN_LENGTH } from '../game/engine'
 import { ECONOMY_COPY, industryById, strategyById } from '../game/data'
+import { ALL_LEVELS } from '../game/progression'
 import type { CrisisOption, GameMetrics, GameState } from '../game/types'
 import { money, monthLabel, number, percent } from '../lib/format'
 
@@ -272,6 +274,8 @@ function GameBoard({ game }: { game: GameState }) {
 
       <MobileSummary game={game} metrics={metrics} insights={insights} onNavigate={setPanel} onHelp={() => setHelpOpen(true)} />
 
+      {!runEnded && <MissionCoach game={game} onOpen={() => setPanel('journey')} />}
+
       <MobileDock
         month={game.month}
         pending={!!game.pendingCrisis}
@@ -348,6 +352,30 @@ function TutorialCard({ step, onAction, onSkip }: { step: number; onAction: () =
         <button onClick={onAction} className="rounded-full bg-ink px-3 py-1.5 text-[10.5px] font-bold text-white">
           {current.action}
         </button>
+      </div>
+    </div>
+  )
+}
+
+function MissionCoach({ game, onOpen }: { game: GameState; onOpen: () => void }) {
+  const level = ALL_LEVELS[game.beginner.currentLevel - 1]
+  const progress = game.beginner.levels.find((item) => item.levelNumber === game.beginner.currentLevel)
+  if (!level || !progress) return null
+  const nextMission = level.missions.find((mission) => progress.missions.find((item) => item.missionId === mission.id)?.status !== 'completed')
+  const completed = progress.missions.filter((mission) => mission.status === 'completed').length
+  const stage = game.beginner.currentLevel <= 15 ? 'Beginner' : game.beginner.currentLevel <= 30 ? 'Early Growth' : game.beginner.currentLevel <= 45 ? 'Expansion' : game.beginner.currentLevel <= 60 ? 'Established Business' : 'Enterprise & Legacy'
+
+  return (
+    <div className="fixed bottom-[4.75rem] left-3 z-[55] w-[min(370px,calc(100vw-24px))] lg:bottom-5 lg:left-5">
+      <div className="overflow-hidden rounded-2xl border border-white/70 bg-paper-2/95 shadow-[0_18px_55px_-22px_rgba(6,19,31,0.7)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3 bg-ink px-3.5 py-2.5 text-white">
+          <div className="flex min-w-0 items-center gap-2.5"><span className="grid size-8 shrink-0 place-items-center rounded-xl bg-lime text-ink"><Target className="size-4" /></span><div className="min-w-0"><p className="truncate text-[8.5px] font-bold uppercase tracking-[0.14em] text-lime">Your startup guide · {stage}</p><p className="truncate text-[12px] font-bold">Level {String(level.levelNumber).padStart(2, '0')} · {level.name}</p></div></div>
+          <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[9px] font-bold text-white/70">{completed}/{level.missions.length}</span>
+        </div>
+        <div className="p-3.5">
+          {nextMission ? <><p className="text-[9px] font-bold uppercase tracking-[0.13em] text-brand-700">What to do next</p><p className="mt-1 text-[14px] font-bold leading-tight text-ink">{nextMission.name}</p><p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-500">{nextMission.description}</p><div className="mt-3 flex items-center gap-2"><button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-700 px-3 py-2 text-[10px] font-bold text-white shadow-sm hover:bg-brand-800">Open mission steps <ArrowRight className="size-3" /></button><span className="text-[9px] font-semibold text-ink-400">Finish the required work, then record evidence.</span></div></> : <><div className="flex items-center gap-2 text-brand-700"><Check className="size-4" /><p className="text-[12px] font-bold">Level complete</p></div><p className="mt-1 text-[10.5px] text-ink-500">Open the journey to review what you learned and see the next level.</p><button type="button" onClick={onOpen} className="mt-3 rounded-xl bg-ink px-3 py-2 text-[10px] font-bold text-white">Review level map</button></>}
+          <div className="mt-3 h-1 overflow-hidden rounded-full bg-ink/10"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(completed / level.missions.length) * 100}%` }} /></div>
+        </div>
       </div>
     </div>
   )
