@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createHash } from 'node:crypto'
 import { BEGINNER_LEVELS, stageSummary } from './stage.js'
 import { ALL_LEVELS, allStageSummaries } from './stages.js'
 import { loadDatabase, newId, now, saveDatabase } from './store.js'
@@ -103,8 +104,9 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (request.method === 'GET' && path === '/api/marketplace') { send(response, 200, { listings: searchMarketplace(database.marketplace, url.searchParams), categories: [...new Set(database.marketplace.businesses.map((business) => business.category))], districts: [...new Set(database.marketplace.businesses.map((business) => business.district))] }); return }
   const marketplaceBusinessMatch = path.match(/^\/api\/marketplace\/businesses\/([^/]+)$/)
   if (request.method === 'GET' && marketplaceBusinessMatch) { const business = database.marketplace.businesses.find((item) => item.id === marketplaceBusinessMatch[1]); if (!business) { error(response, 404, 'Business not found.'); return } send(response, 200, { business, listings: database.marketplace.listings.filter((listing) => listing.businessId === business.id) }); return }
+  if (request.method === 'GET' && path === '/api/companies/name-availability') { const name = String(url.searchParams.get('name') ?? '').trim(); const available = name.length >= 2 && !database.companies.some((company) => company.name.trim().toLowerCase() === name.toLowerCase()); send(response, 200, { available, name }); return }
   if (request.method === 'POST' && path === '/api/auth/dev-login') {
-    const input = await body(request); const player: Player = { id: newId('plr'), name: String(input.name ?? 'Founder'), createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }; database.players.push(player)
+    const input = await body(request); const player: Player = { id: newId('plr'), name: String(input.name ?? 'Founder'), firstName: String(input.firstName ?? ''), lastName: String(input.lastName ?? ''), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'), accountEmail: String(input.accountEmail ?? ''), passwordHash: input.password ? createHash('sha256').update(String(input.password)).digest('hex') : undefined, createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }; database.players.push(player)
     const token = newId('session'); database.sessions.push({ token, playerId: player.id, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }); await saveDatabase(database); send(response, 201, { player, token }); return
   }
   const player = auth(request, database)
@@ -124,7 +126,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     await saveDatabase(database); send(response, 200, classroom); return
   }
   if (request.method === 'GET' && path === '/api/companies') { send(response, 200, { companies: database.companies.filter((company) => company.playerId === player.id) }); return }
-  if (request.method === 'POST' && path === '/api/companies') { const company = createCompany(player.id, await body(request)); database.companies.push(company); database.npcs.push(...seedCompanyNpcs(company.id, company.sector)); await saveDatabase(database); send(response, 201, company); return }
+  if (request.method === 'POST' && path === '/api/companies') { const input = await body(request); const requestedName = String(input.name ?? '').trim(); if (database.companies.some((item) => item.name.trim().toLowerCase() === requestedName.toLowerCase())) { error(response, 409, 'That business name is already taken. Choose another name.'); return } const company = createCompany(player.id, input); database.companies.push(company); database.npcs.push(...seedCompanyNpcs(company.id, company.sector)); await saveDatabase(database); send(response, 201, company); return }
   const stage2CompanyMatch = path.match(/^\/api\/companies\/([^/]+)\/stage-02\/(report|enter)$/)
   if (stage2CompanyMatch) {
     const company = ownedCompany(database, player, stage2CompanyMatch[1]); if (!company) { error(response, 404, 'Company not found.'); return }

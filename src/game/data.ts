@@ -123,7 +123,7 @@ export const ROLES: RoleDef[] = [
   { id: 'engineer', name: 'Engineer', blurb: 'Ships the product. Raises quality and capacity.', salaryMin: 4_800, salaryMax: 8_800 },
   { id: 'designer', name: 'Designer', blurb: 'Improves the experience and the brand people talk about.', salaryMin: 3_000, salaryMax: 5_600 },
   { id: 'sales', name: 'Sales lead', blurb: 'Wins new customers and keeps the pipeline honest.', salaryMin: 3_500, salaryMax: 6_500 },
-  { id: 'marketer', name: 'Marketer', blurb: 'Makes every marketing dollar work harder.', salaryMin: 3_600, salaryMax: 6_800 },
+  { id: 'marketer', name: 'Marketer', blurb: 'Makes every marketing naira work harder.', salaryMin: 3_600, salaryMax: 6_800 },
   { id: 'ops', name: 'Operator', blurb: 'Keeps service tight, churn low and the team sane.', salaryMin: 3_000, salaryMax: 5_600 },
 ]
 
@@ -520,7 +520,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'match',
         label: 'Match the offer',
-        detail: 'Pay $12,000 more a year and keep the roadmap intact.',
+        detail: 'Pay ₦12,000 more a year and keep the roadmap intact.',
         result: 'She stays. The team notices that you fight for your people.',
         effects: { cash: -12_000, morale: 5, quality: 1 },
         tone: 'neutral',
@@ -563,7 +563,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'new-supplier',
         label: 'Qualify a new supplier',
-        detail: 'Spend $4,000 and three weeks testing quality.',
+        detail: 'Spend ₦4,000 and three weeks testing quality.',
         result: 'Short disruption, better long-term supply. Some customers notice.',
         effects: { cash: -4_000, quality: 2, customersPct: -0.03 },
         tone: 'neutral',
@@ -597,7 +597,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'match',
         label: 'Match the cut',
-        detail: 'Spend $5,000 on a promo push and protect volume.',
+        detail: 'Spend ₦5,000 on a promo push and protect volume.',
         result: 'You keep the volume, but the discount is hard to unwind later.',
         effects: { cash: -5_000, customersPct: 0.04, reputation: -2 },
         tone: 'neutral',
@@ -623,7 +623,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'capacity',
         label: 'Spend to keep up',
-        detail: 'Invest $8,000 in stock, support and delivery capacity.',
+        detail: 'Invest ₦8,000 in stock, support and delivery capacity.',
         result: 'You convert the spike. The team is exhausted but proud.',
         effects: { cash: -8_000, customersPct: 0.18, quality: -2 },
         tone: 'good',
@@ -639,7 +639,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'referral',
         label: 'Launch a referral offer',
-        detail: 'Spend $3,000 turning attention into advocates.',
+        detail: 'Spend ₦3,000 turning attention into advocates.',
         result: 'The spike becomes a story your customers tell for you.',
         effects: { cash: -3_000, customersPct: 0.13, reputation: 4 },
         tone: 'good',
@@ -657,7 +657,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'comply',
         label: 'Comply fully and fast',
-        detail: 'Spend $11,000 on counsel and process.',
+        detail: 'Spend ₦11,000 on counsel and process.',
         result: 'Clean file, clean conscience. The process makes you stronger.',
         effects: { cash: -11_000, reputation: 3, quality: 1 },
         tone: 'neutral',
@@ -665,7 +665,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'contest',
         label: 'Contest the scope',
-        detail: 'Spend $4,000 pushing back on what they can see.',
+        detail: 'Spend ₦4,000 pushing back on what they can see.',
         result: 'You protect the cash but spend weeks of attention.',
         effects: { cash: -4_000, reputation: -4, morale: -2 },
         tone: 'bad',
@@ -726,7 +726,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'revenue-loan',
         label: 'Take a revenue loan',
-        detail: 'Borrow $25,000 against next quarter’s receipts.',
+        detail: 'Borrow ₦25,000 against next quarter’s receipts.',
         result: 'Payroll is covered. The debt is now part of every decision.',
         effects: { cash: 25_000, debt: 25_000, reputation: -2 },
         tone: 'neutral',
@@ -742,7 +742,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'delay-payroll',
         label: 'Delay payroll two weeks',
-        detail: 'A $12,000 bridge on the backs of the team.',
+        detail: 'A ₦12,000 bridge on the backs of the team.',
         result: 'Cash protected. Trust damaged. Some people start looking.',
         effects: { cash: 12_000, morale: -12, reputation: -5 },
         tone: 'bad',
@@ -761,7 +761,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'compensate',
         label: 'Compensate every customer',
-        detail: 'Spend $6,000 on credits and over-communicate.',
+        detail: 'Spend ₦6,000 on credits and over-communicate.',
         result: 'People remember how you handled it more than the outage.',
         effects: { cash: -6_000, reputation: 4, customersPct: 0.01 },
         tone: 'good',
@@ -777,7 +777,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'reliability',
         label: 'Reinvest in reliability',
-        detail: 'Spend $10,000 on the root cause and public follow-up.',
+        detail: 'Spend ₦10,000 on the root cause and public follow-up.',
         result: 'An expensive lesson that becomes a selling point.',
         effects: { cash: -10_000, quality: 5, reputation: 2 },
         tone: 'good',
@@ -795,7 +795,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'premium',
         label: 'Offer a premium package',
-        detail: 'Pay $15,000 up front and make the role hers.',
+        detail: 'Pay ₦15,000 up front and make the role hers.',
         result: 'Instant credibility. The team has someone to learn from.',
         effects: { cash: -15_000, quality: 3, morale: 4, reputation: 2 },
         tone: 'good',
@@ -873,7 +873,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'switch',
         label: 'Qualify a second supplier',
-        detail: 'Spend $5,000 and accept a month of uneven quality.',
+        detail: 'Spend ₦5,000 and accept a month of uneven quality.',
         result: 'You gain leverage for the next negotiation.',
         effects: { cash: -5_000, quality: -3, reputation: 1 },
         tone: 'neutral',
@@ -933,7 +933,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'settle',
         label: 'Settle quickly',
-        detail: 'Pay $14,000 and close the file with no admission.',
+        detail: 'Pay ₦14,000 and close the file with no admission.',
         result: 'Expensive, quiet, over. The distraction ends today.',
         effects: { cash: -14_000, reputation: -1 },
         tone: 'neutral',
@@ -941,7 +941,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'fight',
         label: 'Fight it',
-        detail: 'Spend $6,000 on counsel and defend the record.',
+        detail: 'Spend ₦6,000 on counsel and defend the record.',
         result: 'You win the argument and lose a quarter of attention.',
         effects: { cash: -6_000, morale: -3, quality: -1 },
         tone: 'neutral',
@@ -968,7 +968,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'defend',
         label: 'Protect the base',
-        detail: 'Spend $8,000 on retention offers and service.',
+        detail: 'Spend ₦8,000 on retention offers and service.',
         result: 'You keep the customers you have. Growth waits.',
         effects: { cash: -8_000, quality: 1, reputation: 2 },
         tone: 'neutral',
@@ -1003,7 +1003,7 @@ export const CRISES: CrisisDef[] = [
       {
         id: 'invest',
         label: 'Send in a fixer',
-        detail: 'Spend $10,000 on training and support for the new team.',
+        detail: 'Spend ₦10,000 on training and support for the new team.',
         result: 'The branch stabilises. The main location feels the attention drain.',
         effects: { cash: -10_000, quality: 2, morale: 1 },
         tone: 'neutral',
@@ -1052,12 +1052,12 @@ export const FUNDS = [
 
 export const ACHIEVEMENTS: Record<string, { label: string; description: string }> = {
   first_hire: { label: 'First hire', description: 'You added someone to the payroll.' },
-  first_10k: { label: '$10k months', description: 'Monthly revenue crossed $10,000.' },
+  first_10k: { label: '₦10m months', description: 'Monthly revenue crossed ₦10,000,000.' },
   hundred_customers: { label: 'Hundred club', description: 'You reached 100 customers.' },
   first_raise: { label: 'Funded', description: 'You closed your first investor round.' },
   profitable: { label: 'In the black', description: 'A profitable month, without excuses.' },
   survivor: { label: 'One year in', description: 'You survived 12 months of running a company.' },
-  million: { label: 'Million-dollar story', description: 'Your valuation crossed $1M.' },
+  million: { label: 'Billion-naira story', description: 'Your valuation crossed ₦1B.' },
   beloved: { label: 'Beloved', description: 'Reputation reached 80.' },
   first_deal: { label: 'Closed won', description: 'You closed a deal that started in the pipeline.' },
   second_market: { label: 'Second market', description: 'You opened a branch outside the home district.' },

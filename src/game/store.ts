@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   acceptOffer,
-  advanceMonth,
+  advanceDay,
   acknowledgeMissionEvidence,
   declineOffers,
   fireEmployee,
@@ -25,7 +25,7 @@ import {
   toggleDealDiscount,
 } from './engine'
 import type { DifficultyId, FounderBackgroundId, GameState, IndustryId, StrategyId } from './types'
-import { uid } from '../lib/format'
+import { money, uid } from '../lib/format'
 import { createRemoteCompany, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
 
 type Toast = { id: string; message: string; tone: 'good' | 'bad' | 'neutral' }
@@ -43,6 +43,14 @@ export interface StartInput {
   strategy: StrategyId
   founderBackground?: FounderBackgroundId
   difficulty?: DifficultyId
+  firstName?: string
+  lastName?: string
+  nickname?: string
+  avatar?: string
+  accountEmail?: string
+  password?: string
+  problem?: string
+  solution?: string
 }
 
 interface GameStore {
@@ -93,7 +101,7 @@ export const useGame = create<GameStore>()(
         const nextRuns = game ? [archive(game), ...runs].slice(0, 8) : runs
         const nextGame = startGame(input)
         set({ game: nextGame, runs: nextRuns })
-        void createRemoteCompany({ founder: nextGame.founder, company: nextGame.company, industry: nextGame.industry, strategy: nextGame.strategy, ambition: 'Launch and reach break-even', startingCash: nextGame.cash })
+        void createRemoteCompany({ founder: nextGame.founder, company: nextGame.company, industry: nextGame.industry, strategy: nextGame.strategy, ambition: 'Launch and reach break-even', startingCash: nextGame.cash, firstName: nextGame.firstName, lastName: nextGame.lastName, nickname: nextGame.nickname, avatar: nextGame.avatar, accountEmail: nextGame.accountEmail, password: input.password, problem: input.problem, solution: input.solution })
           .then((remote) => set((state) => state.game ? { game: { ...state.game, backendCompanyId: remote.id } } : state))
           .catch(() => get().notify('Local simulation is running. Backend sync will retry on the next action.', 'neutral'))
       },
@@ -128,9 +136,9 @@ export const useGame = create<GameStore>()(
           return
         }
         if (game.status !== 'active') return
-        const next = advanceMonth(game)
+        const next = advanceDay(game)
         set({ game: next })
-        void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 30 }).catch(() => undefined)
+        void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 1 }).catch(() => undefined)
       },
       completeMission: () => {
         get().notify('Complete the business action first. The system will mark the mission automatically.', 'neutral')
@@ -182,7 +190,7 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game || game.status !== 'active') return
         if (game.cash < 500) {
-          get().notify('Refreshing the candidate pool costs $500.', 'bad')
+          get().notify(`Refreshing the candidate pool costs ${money(500)}.`, 'bad')
           return
         }
         set({ game: refreshCandidates(game) })
@@ -281,12 +289,12 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game || game.status !== 'active') return
         if (game.cash < 1_200) {
-          get().notify('Pushing a deal costs $1,200 in cash.', 'bad')
+          get().notify(`Pushing a deal costs ${money(1_200)} in cash.`, 'bad')
           return
         }
         set({ game: pushDeal(game, dealId) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, action: 'push', cost: 1200 }, `deal-push-${dealId}`).catch(() => undefined)
-        get().notify('You spent $1,200 pushing the deal forward.', 'neutral')
+        get().notify(`You spent ${money(1_200)} pushing the deal forward.`, 'neutral')
       },
       openBranch: (branchId) => {
         const { game } = get()
@@ -298,7 +306,7 @@ export const useGame = create<GameStore>()(
           return
         }
         if (game.cash < branch.launchCost) {
-          get().notify(`You need ${branch.launchCost.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} in cash to launch.`, 'bad')
+          get().notify(`You need ${money(branch.launchCost)} in cash to launch.`, 'bad')
           return
         }
         set({ game: openBranch(game, branchId) })

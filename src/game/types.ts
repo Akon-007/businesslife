@@ -254,12 +254,18 @@ export interface GameState {
   status: GameStatus
   endedReason?: string
   founder: string
+  firstName: string
+  lastName: string
+  nickname: string
+  avatar: string
+  accountEmail: string
   founderBackground: FounderBackgroundId
   difficulty: DifficultyId
   company: string
   industry: IndustryId
   strategy: StrategyId
   month: number
+  day: number
   cash: number
   debt: number
   customers: number

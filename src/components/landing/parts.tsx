@@ -64,9 +64,9 @@ export function AvatarStack({ count = 4, className }: { count?: number; classNam
 }
 
 const FEED = [
-  { text: 'Sable Capital closed a $400k seed round', tag: 'Funding', tone: 'good' },
+  { text: 'Sable Capital closed a ₦400m seed round', tag: 'Funding', tone: 'good' },
   { text: 'A price war just broke out in Market Plaza', tag: 'Market', tone: 'bad' },
-  { text: 'A team of four hit $50k MRR in month 22', tag: 'Milestone', tone: 'good' },
+  { text: 'A team of four hit ₦50m MRR in month 22', tag: 'Milestone', tone: 'good' },
   { text: 'A supplier shock hit three food companies', tag: 'Crisis', tone: 'bad' },
   { text: 'Kite & Co signed its first enterprise account', tag: 'Revenue', tone: 'good' },
   { text: 'A founder paused hiring to protect runway', tag: 'Strategy', tone: 'neutral' },

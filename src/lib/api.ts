@@ -17,17 +17,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return payload
 }
 
-export async function ensureApiSession(name: string) {
+export async function ensureApiSession(name: string, profile: { firstName?: string; lastName?: string; nickname?: string; avatar?: string; accountEmail?: string; password?: string } = {}) {
   const existing = token()
   if (existing) return existing
-  const result = await request<{ token: string }>('/api/auth/dev-login', { method: 'POST', body: JSON.stringify({ name }) })
+  const result = await request<{ token: string }>('/api/auth/dev-login', { method: 'POST', body: JSON.stringify({ name, ...profile }) })
   try { window.localStorage.setItem(TOKEN_KEY, result.token) } catch { /* private mode */ }
   return result.token
 }
 
-export async function createRemoteCompany(input: { founder: string; company: string; industry: string; strategy: string; ambition: string; startingCash: number }) {
-  await ensureApiSession(input.founder)
-  return request<{ id: string }>('/api/companies', { method: 'POST', body: JSON.stringify({ name: input.company, sector: input.industry, businessModel: input.strategy, problem: 'A customer problem worth solving', solution: 'A first useful product or service', ambition: input.ambition, initialCapitalKobo: Math.round(input.startingCash * 100) }) })
+export async function checkCompanyName(name: string) {
+  const result = await request<{ available: boolean; name: string }>(`/api/companies/name-availability?name=${encodeURIComponent(name.trim())}`)
+  return result
+}
+
+export async function createRemoteCompany(input: { founder: string; company: string; industry: string; strategy: string; ambition: string; startingCash: number; firstName?: string; lastName?: string; nickname?: string; avatar?: string; accountEmail?: string; password?: string; problem?: string; solution?: string }) {
+  await ensureApiSession(input.founder, input)
+  return request<{ id: string }>('/api/companies', { method: 'POST', body: JSON.stringify({ name: input.company, sector: input.industry, businessModel: input.strategy, problem: input.problem ?? 'A customer problem worth solving', solution: input.solution ?? 'A first useful product or service', ambition: input.ambition, initialCapitalKobo: Math.round(input.startingCash * 100) }) })
 }
 
 export function syncCompanyAction(companyId: string | undefined, action: string, payload: Json = {}, idempotencyKey?: string) {

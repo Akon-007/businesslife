@@ -25,7 +25,7 @@ import { clsx } from 'clsx'
 import { Modal } from '../ui/Modal'
 import { Sparkline, BarRow } from '../ui/Charts'
 import { ACHIEVEMENTS, industryById } from '../../game/data'
-import { getGrade, performanceScore, RUN_LENGTH } from '../../game/engine'
+import { getGrade, performanceScore } from '../../game/engine'
 import type { CrisisOption, CrisisState, GameState, MonthReport } from '../../game/types'
 import { money, monthLabel, number, percent } from '../../lib/format'
 import { effectLabel, Stat } from './bits'
@@ -313,8 +313,8 @@ export function CrisisModal({
 const STATUS_COPY: Record<string, { eyebrow: string; title: string; copy: string }> = {
   completed: {
     eyebrow: 'Run complete',
-    title: 'Thirty-six months. One company.',
-    copy: 'You made it through the full run. The scorecard below is what your decisions compounded into.',
+    title: 'Your company is still in motion.',
+    copy: 'There is no artificial finish line. Keep operating, learning and growing until you choose to stop.',
   },
   acquired: {
     eyebrow: 'Exit',
@@ -384,7 +384,7 @@ export function RunEndModal({
 
             <div className="mt-5 grid grid-cols-2 gap-2 text-left sm:grid-cols-4">
               {[
-                ['Months', `${game.month} / ${RUN_LENGTH}`],
+                ['Days', `${game.day}`],
                 ['Valuation', money(game.valuation, { compact: true })],
                 ['Cash', money(game.cash, { compact: true })],
                 ['Equity left', `${game.founderEquity.toFixed(1)}%`],

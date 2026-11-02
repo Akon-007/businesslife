@@ -41,7 +41,7 @@ import {
 } from '../components/game/modals'
 import { Stat } from '../components/game/bits'
 import { useGame } from '../game/store'
-import { buildInsights, getMetrics, RUN_LENGTH } from '../game/engine'
+import { buildInsights, DAYS_PER_MONTH, getMetrics } from '../game/engine'
 import { ECONOMY_COPY, industryById, strategyById } from '../game/data'
 import { ALL_LEVELS } from '../game/progression'
 import type { CrisisOption, GameMetrics, GameState } from '../game/types'
@@ -234,7 +234,7 @@ function GameBoard({ game }: { game: GameState }) {
         </div>
 
         <MapDock
-          month={game.month}
+          day={game.day}
           disabled={!!game.pendingCrisis}
           ended={runEnded}
           onAdvance={closeMonth}
@@ -277,7 +277,7 @@ function GameBoard({ game }: { game: GameState }) {
       {!runEnded && <MissionCoach game={game} onOpen={() => setPanel('journey')} />}
 
       <MobileDock
-        month={game.month}
+          day={game.day}
         pending={!!game.pendingCrisis}
         ended={runEnded}
         onAdvance={closeMonth}
@@ -431,10 +431,9 @@ function TopBar({
 
         <div className="flex shrink-0 items-center gap-1.5">
           <div className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-center">
-            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">Month</p>
+            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">Day</p>
             <p className="text-[11px] font-bold leading-tight tabular-nums">
-              {Math.min(game.month + 1, RUN_LENGTH)}
-              <span className="text-white/35">/{RUN_LENGTH}</span>
+              {game.day}
             </p>
           </div>
           <button
@@ -506,7 +505,7 @@ function HudChip({ label, value, tone }: { label: string; value: string; tone?: 
 }
 
 function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetrics }) {
-  const progress = Math.min(100, (game.month / RUN_LENGTH) * 100)
+  const progress = ((game.day - 1) % DAYS_PER_MONTH) / DAYS_PER_MONTH * 100
   const runway = metrics.runway >= 99 ? 'Positive' : `${metrics.runway.toFixed(1)} months`
 
   return (
@@ -515,8 +514,8 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
         <div>
           <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-400">Meridian City</p>
           <p className="mt-0.5 font-display text-[17px] font-semibold leading-tight text-ink">
-            Month {Math.min(game.month + 1, RUN_LENGTH)}
-            <span className="text-[12px] font-medium text-ink-400"> of {RUN_LENGTH}</span>
+            Day {game.day}
+            <span className="text-[12px] font-medium text-ink-400"> · month {game.month + 1}</span>
           </p>
         </div>
         <span className="rounded-full bg-ink px-2 py-1 text-[9px] font-bold text-lime">{monthLabel(game.month)}</span>
@@ -651,7 +650,7 @@ function NovaCard({
 }
 
 function MapDock({
-  month,
+  day,
   disabled,
   pending,
   ended,
@@ -659,7 +658,7 @@ function MapDock({
   onReview,
   onNavigate,
 }: {
-  month: number
+  day: number
   disabled: boolean
   pending: boolean
   ended: boolean
@@ -697,7 +696,7 @@ function MapDock({
             pending ? 'bg-coral/15 text-[#9c3426]' : 'bg-brand-600 text-white hover:bg-brand-700',
           )}
         >
-          {pending ? 'Crisis waiting' : `Close month ${month + 1}`}
+          {pending ? 'Crisis waiting' : `Advance to day ${day + 1}`}
           <ArrowRight className="size-3.5" />
         </button>
       )}
@@ -713,14 +712,14 @@ function MapDock({
 }
 
 function MobileDock({
-  month,
+  day,
   pending,
   ended,
   onAdvance,
   onReview,
   onNavigate,
 }: {
-  month: number
+  day: number
   pending: boolean
   ended: boolean
   onAdvance: () => void
@@ -759,7 +758,7 @@ function MobileDock({
               pending ? 'bg-coral/15 text-[#9c3426]' : 'bg-brand-600 text-white',
             )}
           >
-            {pending ? 'Crisis' : `Close M${month + 1}`}
+            {pending ? 'Crisis' : `Day ${day + 1}`}
             <ArrowRight className="size-3.5" />
           </button>
         )}
