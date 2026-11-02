@@ -58,6 +58,29 @@ export function createBeginnerProgress(): BeginnerProgress {
   }
 }
 
+export function acknowledgeMissionEvidence(state: GameState, evidence: string[]): GameState {
+  const existingEvidence = new Set(state.missionEvidence ?? [])
+  evidence.forEach((item) => existingEvidence.add(item))
+  let next = { ...state, missionEvidence: [...existingEvidence] }
+  const current = ALL_LEVELS[next.beginner.currentLevel - 1]
+  if (!current) return next
+  const progress = next.beginner.levels.find((item) => item.levelNumber === current.levelNumber)
+  if (!progress) return next
+  const newlyCompleted = current.missions.filter((mission) => existingEvidence.has(mission.id) && !progress.missions.find((item) => item.missionId === mission.id)?.status?.includes('completed'))
+  if (newlyCompleted.length === 0) return next
+  const missions = progress.missions.map((item) => newlyCompleted.some((mission) => mission.id === item.missionId) ? { ...item, status: 'completed' as const, completedAtMonth: next.month } : item)
+  const levelComplete = current.missions.every((mission) => missions.some((item) => item.missionId === mission.id && item.status === 'completed'))
+  const levels = next.beginner.levels.map((item) => item.levelNumber === current.levelNumber ? { ...item, missions, status: levelComplete ? 'completed' as const : 'active' as const, ...(levelComplete ? { completedAtMonth: next.month } : {}) } : item)
+  const xp = newlyCompleted.reduce((total, mission) => total + mission.reward.xp, 0)
+  const reputation = newlyCompleted.reduce((total, mission) => total + mission.reward.reputation, 0)
+  if (levelComplete && current.levelNumber < ALL_LEVELS.length) {
+    const nextLevel = current.levelNumber + 1
+    next = { ...next, beginner: { ...next.beginner, xp: next.beginner.xp + xp, reputation: next.beginner.reputation + reputation, currentLevel: nextLevel, levels: levels.map((item) => item.levelNumber === nextLevel ? { ...item, status: 'available' as const, missions: item.missions.map((entry) => ({ ...entry, status: 'available' as const })) } : item) } }
+    return addLog(next, { month: next.month, title: `Level ${String(nextLevel).padStart(2, '0')} unlocked`, detail: `${ALL_LEVELS[nextLevel - 1].name} is now available because the previous work is complete.`, tone: 'good', kind: 'milestone' })
+  }
+  return { ...next, beginner: { ...next.beginner, xp: next.beginner.xp + xp, reputation: next.beginner.reputation + reputation, levels } }
+}
+
 export function completeBeginnerMission(state: GameState, missionId: string): GameState {
   const level = ALL_LEVELS.find((definition) => definition.missions.some((mission) => mission.id === missionId))
   if (!level || state.beginner.currentLevel !== level.levelNumber) return state
@@ -228,9 +251,10 @@ export function startGame(input: {
     economyOffset,
     branches: BRANCH_OPTIONS.map((branch) => ({ ...branch })),
     beginner: createBeginnerProgress(),
+    missionEvidence: [],
   }
 
-  const withValuation = { ...base, valuation: computeValuation(base) }
+  const withValuation = acknowledgeMissionEvidence({ ...base, valuation: computeValuation(base) }, ['beginner-1-1', 'beginner-1-2', 'beginner-1-3', 'beginner-1-4', 'beginner-1-5', 'beginner-1-6'])
   return addLog(withValuation, {
     month: 0,
     title: `${withValuation.company} opens its doors`,
@@ -1263,6 +1287,7 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     ...game,
     version: SAVE_VERSION,
     beginner: migratedProgress,
+    missionEvidence: game.missionEvidence ?? [],
     founderBackground: game.founderBackground ?? 'operator',
     difficulty: game.difficulty ?? 'standard',
     trainingSpend: game.trainingSpend ?? 0,

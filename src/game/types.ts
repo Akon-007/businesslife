@@ -295,6 +295,7 @@ export interface GameState {
   economyOffset: number
   branches: Branch[]
   beginner: BeginnerProgress
+  missionEvidence: string[]
 }
 
 export interface MonthReport {

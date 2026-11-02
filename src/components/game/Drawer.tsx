@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   AlertTriangle,
@@ -400,6 +400,8 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
   const updatePrice = useGame((state) => state.updatePrice)
   const updateMarketing = useGame((state) => state.updateMarketing)
   const updateProduct = useGame((state) => state.updateProduct)
+  const recordEvidence = useGame((state) => state.recordEvidence)
+  const [customerSegment, setCustomerSegment] = useState<string | null>(null)
   const advance = useGame((state) => state.advance)
   const industry = industryById(game.industry)
   const metrics = getMetrics(game)
@@ -409,6 +411,10 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
   const guidance = buildInsights(game)[0]
   const economy = game.economy
   const economyCopy = ECONOMY_COPY[economy.phase]
+
+  useEffect(() => {
+    recordEvidence(['beginner-2-2', 'beginner-2-3', 'beginner-2-7'])
+  }, [recordEvidence])
 
   return (
     <>
@@ -458,6 +464,16 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
           />
         </div>
       </section>
+
+      <PanelSection title="Customer discovery" hint="A real startup learns who it serves before spending heavily.">
+        <div className="grid grid-cols-3 gap-2">
+          {['Convenience seekers', 'Price-conscious buyers', 'Premium customers'].map((segment) => <button key={segment} type="button" onClick={() => { setCustomerSegment(segment); recordEvidence(['beginner-2-1']) }} className={clsx('rounded-xl border px-2 py-2 text-[10px] font-bold transition', customerSegment === segment ? 'border-brand-400 bg-brand-50 text-brand-800' : 'border-line bg-paper-3/60 text-ink-600 hover:border-brand-300')}>{segment}</button>)}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => recordEvidence(['beginner-2-4'])} className="rounded-xl border border-line bg-white px-3 py-2 text-left text-[10px] font-bold text-ink-700 hover:border-brand-300">Run a customer interview<span className="mt-0.5 block text-[9px] font-normal text-ink-400">Record what customers value.</span></button>
+          <button type="button" onClick={() => recordEvidence(['beginner-2-6'])} className="rounded-xl border border-line bg-white px-3 py-2 text-left text-[10px] font-bold text-ink-700 hover:border-brand-300">Choose your advantage<span className="mt-0.5 block text-[9px] font-normal text-ink-400">Decide why customers choose you.</span></button>
+        </div>
+      </PanelSection>
 
       <section className="rounded-2xl border border-line bg-white p-3.5">
         <div className="flex items-start justify-between gap-2">
@@ -1449,7 +1465,6 @@ function AppsPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
 function JourneyPanel() {
   const [selectedLevelNumber, setSelectedLevelNumber] = useState<number | null>(null)
   const game = useCurrentGame()
-  const completeMission = useGame((state) => state.completeMission)
   const current = ALL_LEVELS[game.beginner.currentLevel - 1]
   const currentProgress = game.beginner.levels.find((level) => level.levelNumber === game.beginner.currentLevel)
   const completedLevels = game.beginner.levels.filter((level) => level.status === 'completed').length
@@ -1483,11 +1498,11 @@ function JourneyPanel() {
               const progress = currentProgress.missions.find((item) => item.missionId === mission.id)
               const done = progress?.status === 'completed'
               return (
-                <button key={mission.id} type="button" onClick={() => completeMission(mission.id)} disabled={done || game.status !== 'active'} className={clsx('flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition', done ? 'border-brand-100 bg-brand-50/70' : 'border-line bg-paper-2 hover:border-brand-300 hover:bg-brand-50/30')}>
+                <div key={mission.id} className={clsx('flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition', done ? 'border-brand-100 bg-brand-50/70' : 'border-line bg-paper-2')}>
                   <span className={clsx('mt-0.5 grid size-5 shrink-0 place-items-center rounded-full', done ? 'bg-brand-600 text-white' : 'bg-paper-3 text-ink-400')}><Check className="size-3" /></span>
                   <span className="min-w-0 flex-1"><span className={clsx('block text-[11px] font-bold', done ? 'text-brand-800 line-through' : 'text-ink')}>{mission.name}</span><span className="mt-0.5 block text-[10px] leading-snug text-ink-500">{mission.description}</span></span>
-                  <span className="shrink-0 text-[9px] font-bold text-ink-400">+{mission.reward.xp} XP</span>
-                </button>
+                  <span className="shrink-0 text-[9px] font-bold text-ink-400">{done ? 'Done' : `+${mission.reward.xp} XP`}</span>
+                </div>
               )
             })}
           </div>
@@ -1519,8 +1534,7 @@ function JourneyPanel() {
                 {selectedLevel.missions.map((mission) => {
                   const missionProgress = selectedProgress.missions.find((item) => item.missionId === mission.id)
                   const done = missionProgress?.status === 'completed'
-                  const canComplete = selectedLevel.levelNumber === game.beginner.currentLevel && !done && game.status === 'active'
-                  return <div key={mission.id} className={clsx('flex items-start gap-3 rounded-2xl border px-3 py-3', done ? 'border-brand-100 bg-brand-50/60' : 'border-line bg-white')}><span className={clsx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold', done ? 'bg-brand-600 text-white' : 'bg-paper-3 text-ink-400')}>{done ? '✓' : selectedLevel.levelNumber}</span><div className="min-w-0 flex-1"><p className={clsx('text-[11px] font-bold', done ? 'text-brand-800' : 'text-ink')}>{mission.name}</p><p className="mt-1 text-[10px] leading-relaxed text-ink-500">{mission.description}</p></div>{canComplete && <button type="button" onClick={() => completeMission(mission.id)} className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[9px] font-bold text-white hover:bg-brand-700">Complete</button>}</div>
+                  return <div key={mission.id} className={clsx('flex items-start gap-3 rounded-2xl border px-3 py-3', done ? 'border-brand-100 bg-brand-50/60' : 'border-line bg-white')}><span className={clsx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold', done ? 'bg-brand-600 text-white' : 'bg-paper-3 text-ink-400')}>{done ? '✓' : selectedLevel.levelNumber}</span><div className="min-w-0 flex-1"><p className={clsx('text-[11px] font-bold', done ? 'text-brand-800' : 'text-ink')}>{mission.name}</p><p className="mt-1 text-[10px] leading-relaxed text-ink-500">{mission.description}</p></div><span className="shrink-0 text-[9px] font-bold text-ink-400">{done ? 'Done' : 'Complete in the business'}</span></div>
                 })}
               </div>
               <div className="mt-4 rounded-2xl border border-line bg-paper-3/60 px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink-400">Unlock rule</p><p className="mt-1 text-[10.5px] leading-relaxed text-ink-600">Complete every mandatory mission in this level. The next level unlocks only after the simulation records the completion.</p></div>
