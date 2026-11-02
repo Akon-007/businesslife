@@ -1447,6 +1447,7 @@ function AppsPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
 }
 
 function JourneyPanel() {
+  const [selectedLevelNumber, setSelectedLevelNumber] = useState<number | null>(null)
   const game = useCurrentGame()
   const completeMission = useGame((state) => state.completeMission)
   const current = ALL_LEVELS[game.beginner.currentLevel - 1]
@@ -1455,6 +1456,8 @@ function JourneyPanel() {
   const completedMissions = game.beginner.levels.reduce((total, level) => total + level.missions.filter((mission) => mission.status === 'completed').length, 0)
   const totalMissions = ALL_LEVELS.reduce((total, level) => total + level.missions.length, 0)
   const stageName = game.beginner.currentLevel <= 15 ? 'Stage 01 · Beginner' : game.beginner.currentLevel <= 30 ? 'Stage 02 · Early Growth' : game.beginner.currentLevel <= 45 ? 'Stage 03 · Expansion' : game.beginner.currentLevel <= 60 ? 'Stage 04 · Established Business' : 'Stage 05 · Enterprise & Legacy'
+  const selectedLevel = selectedLevelNumber === null ? null : ALL_LEVELS.find((level) => level.levelNumber === selectedLevelNumber)
+  const selectedProgress = selectedLevel ? game.beginner.levels.find((level) => level.levelNumber === selectedLevel.levelNumber) : undefined
 
   return (
     <>
@@ -1496,10 +1499,35 @@ function JourneyPanel() {
           {ALL_LEVELS.map((level) => {
             const progress = game.beginner.levels.find((item) => item.levelNumber === level.levelNumber)
             const active = level.levelNumber === game.beginner.currentLevel
-            return <div key={level.levelId} className={clsx('flex items-center gap-2 rounded-lg px-2.5 py-2', active ? 'bg-brand-50 ring-1 ring-brand-100' : 'bg-paper-3/60')}><span className={clsx('grid size-5 place-items-center rounded-full text-[9px] font-bold', progress?.status === 'completed' ? 'bg-brand-600 text-white' : active ? 'bg-ink text-white' : 'bg-line text-ink-400')}>{progress?.status === 'completed' ? '✓' : level.levelNumber}</span><span className={clsx('text-[10.5px] font-semibold', active ? 'text-ink' : 'text-ink-500')}>{level.name}</span><span className="ml-auto text-[9px] font-bold uppercase tracking-[0.08em] text-ink-400">{progress?.status}</span></div>
+            return <button key={level.levelId} type="button" onClick={() => setSelectedLevelNumber(level.levelNumber)} className={clsx('flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-brand-50', active ? 'bg-brand-50 ring-1 ring-brand-100' : 'bg-paper-3/60')}><span className={clsx('grid size-5 place-items-center rounded-full text-[9px] font-bold', progress?.status === 'completed' ? 'bg-brand-600 text-white' : active ? 'bg-ink text-white' : 'bg-line text-ink-400')}>{progress?.status === 'completed' ? '✓' : level.levelNumber}</span><span className={clsx('min-w-0 truncate text-[10.5px] font-semibold', active ? 'text-ink' : 'text-ink-500')}>{level.name}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase tracking-[0.08em] text-ink-400">{progress?.status}</span></button>
           })}
         </div>
       </PanelSection>
+      <AnimatePresence>
+        {selectedLevel && selectedProgress && (
+          <motion.div className="fixed inset-0 z-[110] grid place-items-center px-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <button type="button" aria-label="Close level missions" onClick={() => setSelectedLevelNumber(null)} className="absolute inset-0 bg-ink-950/55 backdrop-blur-[3px]" />
+            <motion.div role="dialog" aria-modal="true" aria-label={`${selectedLevel.name} missions`} initial={{ y: 16, scale: 0.97 }} animate={{ y: 0, scale: 1 }} exit={{ y: 16, scale: 0.97 }} className="relative z-10 max-h-[min(720px,calc(100vh-32px))] w-full max-w-[520px] overflow-y-auto rounded-3xl bg-paper-2 p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div><p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-brand-700">{selectedLevel.stageId === 'beginner' ? 'Stage 01 · Beginner' : `Level ${selectedLevel.levelNumber}`}{selectedLevel.chapter ? ` · ${selectedLevel.chapter}` : ''}</p><h3 className="mt-1 font-display text-2xl font-semibold text-ink">Level {String(selectedLevel.levelNumber).padStart(2, '0')} · {selectedLevel.name}</h3></div>
+                <button type="button" aria-label="Close" onClick={() => setSelectedLevelNumber(null)} className="grid size-9 shrink-0 place-items-center rounded-full bg-ink/5 text-ink-600 hover:bg-ink/10"><X className="size-4" /></button>
+              </div>
+              <p className="mt-3 text-[12px] leading-relaxed text-ink-500">{selectedLevel.description}</p>
+              <div className="mt-3 rounded-2xl bg-brand-50 px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-brand-700">Learning objective</p><p className="mt-1 text-[11px] leading-relaxed text-brand-950">{selectedLevel.learningObjective}</p></div>
+              <div className="mt-4 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-400">Missions</p><span className="rounded-full bg-paper-3 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-ink-500">{selectedProgress.missions.filter((mission) => mission.status === 'completed').length}/{selectedLevel.missions.length} complete</span></div>
+              <div className="mt-2 space-y-2">
+                {selectedLevel.missions.map((mission) => {
+                  const missionProgress = selectedProgress.missions.find((item) => item.missionId === mission.id)
+                  const done = missionProgress?.status === 'completed'
+                  const canComplete = selectedLevel.levelNumber === game.beginner.currentLevel && !done && game.status === 'active'
+                  return <div key={mission.id} className={clsx('flex items-start gap-3 rounded-2xl border px-3 py-3', done ? 'border-brand-100 bg-brand-50/60' : 'border-line bg-white')}><span className={clsx('mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold', done ? 'bg-brand-600 text-white' : 'bg-paper-3 text-ink-400')}>{done ? '✓' : selectedLevel.levelNumber}</span><div className="min-w-0 flex-1"><p className={clsx('text-[11px] font-bold', done ? 'text-brand-800' : 'text-ink')}>{mission.name}</p><p className="mt-1 text-[10px] leading-relaxed text-ink-500">{mission.description}</p></div>{canComplete && <button type="button" onClick={() => completeMission(mission.id)} className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[9px] font-bold text-white hover:bg-brand-700">Complete</button>}</div>
+                })}
+              </div>
+              <div className="mt-4 rounded-2xl border border-line bg-paper-3/60 px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink-400">Unlock rule</p><p className="mt-1 text-[10.5px] leading-relaxed text-ink-600">Complete every mandatory mission in this level. The next level unlocks only after the simulation records the completion.</p></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
