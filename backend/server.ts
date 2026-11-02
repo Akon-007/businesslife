@@ -59,6 +59,20 @@ function event(company: Company, type: string, detail: Record<string, unknown> =
   company.updatedAt = now()
 }
 
+function progressionView(company: Company) {
+  const current = ALL_LEVELS.find((level) => level.levelNumber === company.progression.currentLevel) ?? ALL_LEVELS[0]
+  const completed = new Set(company.progression.completedMissions)
+  return {
+    stageId: current.stageId ?? 'beginner',
+    chapter: current.chapter,
+    currentLevel: company.progression.currentLevel,
+    xp: company.progression.xp,
+    reputation: company.progression.reputation,
+    current: { ...current, missions: current.missions.map((mission) => ({ ...mission, status: completed.has(mission.id) ? 'completed' : 'available' })) },
+    levels: ALL_LEVELS.map((level) => ({ levelId: level.levelId, stageId: level.stageId ?? 'beginner', chapter: level.chapter, levelNumber: level.levelNumber, name: level.name, description: level.description, learningObjective: level.learningObjective, status: level.levelNumber < company.progression.currentLevel ? 'completed' : level.levelNumber === company.progression.currentLevel ? 'active' : 'locked', missions: level.missions.map((mission) => ({ id: mission.id, name: mission.name, status: completed.has(mission.id) ? 'completed' : level.levelNumber === company.progression.currentLevel ? 'available' : 'locked' })) })),
+  }
+}
+
 function ledger(company: Company, type: Company['transactions'][number]['type'], amount: number, description: string, source: string) {
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero.')
   const amountKobo = Math.round(amount * 100)
@@ -83,6 +97,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (request.method === 'GET' && (path === '/health' || path === '/api/health')) { send(response, 200, { ok: true, service: 'businesslife-api', time: now() }); return }
   if (request.method === 'GET' && path === '/api/stages') { send(response, 200, { stages: allStageSummaries(stageSummary()) }); return }
   if (request.method === 'GET' && path === '/api/stages/beginner') { send(response, 200, stageSummary()); return }
+  if (request.method === 'GET' && path === '/api/progression') { send(response, 200, { levels: ALL_LEVELS, stages: allStageSummaries(stageSummary()) }); return }
   if (request.method === 'GET' && path === '/api/apps') { send(response, 200, { apps: IN_GAME_APPS, fictionalBrands: true, disclaimer: 'These are fictional simulator brands.' }); return }
   if (request.method === 'GET' && path === '/api/city') { send(response, 200, database.city); return }
   if (request.method === 'GET' && path === '/api/marketplace') { send(response, 200, { listings: searchMarketplace(database.marketplace, url.searchParams), categories: [...new Set(database.marketplace.businesses.map((business) => business.category))], districts: [...new Set(database.marketplace.businesses.map((business) => business.district))] }); return }
@@ -118,6 +133,8 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     if (company.status === 'draft') { error(response, 409, 'A company must be established before entering Early Growth.'); return }
     company.progression.currentLevel = Math.max(16, company.progression.currentLevel); company.notifications.unshift({ id: newId('note'), type: 'stage_02_entry', priority: 'high', report, createdAt: now() }); event(company, 'stage_02_entered', { report }); await saveDatabase(database); send(response, 200, { stageId: 'stage-2', currentLevel: company.progression.currentLevel, report }); return
   }
+  const progressionMatch = path.match(/^\/api\/companies\/([^/]+)\/progression$/)
+  if (request.method === 'GET' && progressionMatch) { const company = ownedCompany(database, player, progressionMatch[1]); if (!company) { error(response, 404, 'Company not found.'); return } send(response, 200, progressionView(company)); return }
   const storefrontMatch = path.match(/^\/api\/companies\/([^/]+)\/storefront$/)
   if (request.method === 'POST' && storefrontMatch) {
     const company = ownedCompany(database, player, storefrontMatch[1]); if (!company) { error(response, 404, 'Company not found.'); return }

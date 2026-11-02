@@ -43,7 +43,6 @@ import {
 } from '../../game/engine'
 import {
   ACHIEVEMENTS,
-  BEGINNER_LEVELS,
   ECONOMY_COPY,
   difficultyById,
   founderBackgroundById,
@@ -51,6 +50,7 @@ import {
   roleById,
   strategyById,
 } from '../../game/data'
+import { ALL_LEVELS } from '../../game/progression'
 import type { Employee, GameState, RoleId } from '../../game/types'
 import { IN_GAME_APPS } from '../../game/apps'
 import { money, monthLabel, number, percent } from '../../lib/format'
@@ -1449,11 +1449,12 @@ function AppsPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
 function JourneyPanel() {
   const game = useCurrentGame()
   const completeMission = useGame((state) => state.completeMission)
-  const current = BEGINNER_LEVELS[game.beginner.currentLevel - 1]
+  const current = ALL_LEVELS[game.beginner.currentLevel - 1]
   const currentProgress = game.beginner.levels.find((level) => level.levelNumber === game.beginner.currentLevel)
   const completedLevels = game.beginner.levels.filter((level) => level.status === 'completed').length
   const completedMissions = game.beginner.levels.reduce((total, level) => total + level.missions.filter((mission) => mission.status === 'completed').length, 0)
-  const totalMissions = BEGINNER_LEVELS.reduce((total, level) => total + level.missions.length, 0)
+  const totalMissions = ALL_LEVELS.reduce((total, level) => total + level.missions.length, 0)
+  const stageName = game.beginner.currentLevel <= 15 ? 'Stage 01 · Beginner' : game.beginner.currentLevel <= 30 ? 'Stage 02 · Early Growth' : game.beginner.currentLevel <= 45 ? 'Stage 03 · Expansion' : game.beginner.currentLevel <= 60 ? 'Stage 04 · Established Business' : 'Stage 05 · Enterprise & Legacy'
 
   return (
     <>
@@ -1461,14 +1462,14 @@ function JourneyPanel() {
         <span className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-lime/20 blur-2xl" />
         <div className="relative flex items-end justify-between gap-3">
           <div>
-            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-lime">Stage 01 · Beginner</p>
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-lime">{stageName}</p>
             <h3 className="mt-1 font-display text-[22px] font-semibold">Build the company.</h3>
-            <p className="mt-1 max-w-[280px] text-[11px] leading-relaxed text-white/60">Fifteen levels, one persistent business, and consequences that carry forward.</p>
+            <p className="mt-1 max-w-[280px] text-[11px] leading-relaxed text-white/60">A 75-level guided journey from first idea to enterprise and legacy.</p>
           </div>
           <div className="text-right"><p className="font-display text-3xl font-semibold text-lime">{game.beginner.xp}</p><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/45">XP earned</p></div>
         </div>
         <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-lime transition-[width]" style={{ width: `${(completedMissions / totalMissions) * 100}%` }} /></div>
-        <p className="relative mt-2 text-[10px] font-semibold text-white/55">{completedLevels}/15 levels · {completedMissions}/{totalMissions} missions</p>
+        <p className="relative mt-2 text-[10px] font-semibold text-white/55">{completedLevels}/75 levels · {completedMissions}/{totalMissions} missions</p>
       </section>
 
       {current && currentProgress && (
@@ -1490,9 +1491,9 @@ function JourneyPanel() {
         </PanelSection>
       )}
 
-      <PanelSection title="Level map" hint="The journey unlocks from the actual company state you are building.">
-        <div className="space-y-1.5">
-          {BEGINNER_LEVELS.map((level) => {
+      <PanelSection title="Level map" hint="Complete every mandatory mission in the active level to unlock the next level.">
+        <div className="max-h-[480px] space-y-1.5 overflow-y-auto pr-1">
+          {ALL_LEVELS.map((level) => {
             const progress = game.beginner.levels.find((item) => item.levelNumber === level.levelNumber)
             const active = level.levelNumber === game.beginner.currentLevel
             return <div key={level.levelId} className={clsx('flex items-center gap-2 rounded-lg px-2.5 py-2', active ? 'bg-brand-50 ring-1 ring-brand-100' : 'bg-paper-3/60')}><span className={clsx('grid size-5 place-items-center rounded-full text-[9px] font-bold', progress?.status === 'completed' ? 'bg-brand-600 text-white' : active ? 'bg-ink text-white' : 'bg-line text-ink-400')}>{progress?.status === 'completed' ? '✓' : level.levelNumber}</span><span className={clsx('text-[10.5px] font-semibold', active ? 'text-ink' : 'text-ink-500')}>{level.name}</span><span className="ml-auto text-[9px] font-bold uppercase tracking-[0.08em] text-ink-400">{progress?.status}</span></div>

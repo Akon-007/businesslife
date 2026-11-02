@@ -1,4 +1,5 @@
 import type { LevelDefinition } from './stage.js'
+import { BEGINNER_LEVELS } from './stage.js'
 import { STAGE_02_LEVELS } from './stage02.js'
 
 const stageNames = [
@@ -18,6 +19,11 @@ const GENERIC_LATER_LEVELS: LevelDefinition[] = stageNames.slice(1).flatMap(([st
     name,
     description: `Build the company through ${name.toLowerCase()} decisions and measurable outcomes.`,
     learningObjective: `Apply the ${stageName.toLowerCase()} operating principles to the persistent business.`,
+    entryConditions: [`Complete Level ${levelNumber - 1}`],
+    completionRules: ['Make the operating decision, produce evidence, and review the outcome.'],
+    failureRoutes: ['Review the result, adjust the decision, and submit new evidence.'],
+    engineDependencies: ['company', 'finance', 'operations', 'progression'],
+    nextUnlocks: levelNumber < 75 ? [`stage-${stageIndex + 3}-${String(levelIndex + 2).padStart(2, '0')}`] : [],
     missions: [
       { id: `${stageId}-${levelNumber}-decision`, name: 'Make the operating decision', description: 'Choose a direction and record the trade-off.', mandatory: true, reward: { xp: 50, reputation: 2 } },
       { id: `${stageId}-${levelNumber}-evidence`, name: 'Produce evidence', description: 'Use the shared simulation to test the decision.', mandatory: true, reward: { xp: 50, reputation: 2 } },
@@ -27,7 +33,7 @@ const GENERIC_LATER_LEVELS: LevelDefinition[] = stageNames.slice(1).flatMap(([st
 }))
 
 export const LATER_LEVELS: LevelDefinition[] = [...STAGE_02_LEVELS, ...GENERIC_LATER_LEVELS]
-export const ALL_LEVELS = LATER_LEVELS
+export const ALL_LEVELS = [...BEGINNER_LEVELS, ...LATER_LEVELS]
 
 export function allStageSummaries(beginner: { levelCount: number; levels: LevelDefinition[] }) {
   return [

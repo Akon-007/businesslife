@@ -18,6 +18,7 @@ import {
   roleById,
   strategyById,
 } from './data'
+import { ALL_LEVELS } from './progression'
 import type {
   Candidate,
   CrisisDef,
@@ -50,7 +51,7 @@ export function createBeginnerProgress(): BeginnerProgress {
     xp: 0,
     reputation: 0,
     currentLevel: 1,
-    levels: BEGINNER_LEVELS.map((level, index) => ({
+    levels: ALL_LEVELS.map((level, index) => ({
       levelNumber: level.levelNumber,
       status: index === 0 ? 'available' : 'locked',
       missions: level.missions.map((mission) => ({ missionId: mission.id, status: index === 0 ? 'available' : 'locked' })),
@@ -59,7 +60,7 @@ export function createBeginnerProgress(): BeginnerProgress {
 }
 
 export function completeBeginnerMission(state: GameState, missionId: string): GameState {
-  const level = BEGINNER_LEVELS.find((definition) => definition.missions.some((mission) => mission.id === missionId))
+  const level = ALL_LEVELS.find((definition) => definition.missions.some((mission) => mission.id === missionId))
   if (!level || state.beginner.currentLevel !== level.levelNumber) return state
   const mission = level.missions.find((item) => item.id === missionId)
   const progress = state.beginner.levels.find((item) => item.levelNumber === level.levelNumber)
@@ -72,7 +73,7 @@ export function completeBeginnerMission(state: GameState, missionId: string): Ga
   const levels = state.beginner.levels.map((item) => item.levelNumber === level.levelNumber
     ? { ...item, missions, status: levelComplete ? 'completed' as const : 'active' as const, ...(levelComplete ? { completedAtMonth: state.month } : {}) }
     : item)
-  if (levelComplete && level.levelNumber < BEGINNER_LEVELS.length) {
+  if (levelComplete && level.levelNumber < ALL_LEVELS.length) {
     const nextLevel = level.levelNumber + 1
     return addLog({
       ...state,
@@ -85,7 +86,7 @@ export function completeBeginnerMission(state: GameState, missionId: string): Ga
           ? { ...item, status: 'available' as const, missions: item.missions.map((entry) => ({ ...entry, status: 'available' as const })) }
           : item),
       },
-    }, { month: state.month, title: `Level ${String(nextLevel).padStart(2, '0')} unlocked`, detail: `${BEGINNER_LEVELS[nextLevel - 1].name} is now available.`, tone: 'good', kind: 'milestone' })
+    }, { month: state.month, title: `Level ${String(nextLevel).padStart(2, '0')} unlocked`, detail: `${ALL_LEVELS[nextLevel - 1].name} is now available.`, tone: 'good', kind: 'milestone' })
   }
   return {
     ...state,
@@ -1253,10 +1254,16 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
   const industry = industryById(game.industry)
   const economyOffset = game.economyOffset ?? 0
   const suppliers = game.suppliers?.length ? game.suppliers : makeSuppliers(game.industry)
+  const savedProgress = game.beginner
+  const freshProgress = createBeginnerProgress()
+  const completedIds = new Set(savedProgress?.levels?.flatMap((level) => level.missions.filter((mission) => mission.status === 'completed').map((mission) => mission.missionId)) ?? [])
+  const migratedProgress: BeginnerProgress = savedProgress
+    ? { ...freshProgress, ...savedProgress, levels: freshProgress.levels.map((level) => ({ ...level, status: level.levelNumber < (savedProgress.currentLevel ?? 1) ? 'completed' as const : level.levelNumber === (savedProgress.currentLevel ?? 1) ? 'available' as const : 'locked' as const, missions: level.missions.map((mission) => ({ ...mission, status: completedIds.has(mission.missionId) ? 'completed' as const : level.levelNumber <= (savedProgress.currentLevel ?? 1) ? 'available' as const : 'locked' as const })) })) }
+    : freshProgress
   return {
     ...game,
     version: SAVE_VERSION,
-    beginner: game.beginner ?? createBeginnerProgress(),
+    beginner: migratedProgress,
     founderBackground: game.founderBackground ?? 'operator',
     difficulty: game.difficulty ?? 'standard',
     trainingSpend: game.trainingSpend ?? 0,

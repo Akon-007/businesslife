@@ -265,8 +265,13 @@ const beginnerLevel = (
   name,
   description,
   learningObjective,
-  missions,
+  missions: missions.map((mission, index) => ({ ...mission, id: `beginner-${levelNumber}-${index + 1}` })),
   completionRule: 'Complete every mandatory mission in this level.',
+  entryConditions: levelNumber === 1 ? [] : [`Complete Level ${levelNumber - 1}`],
+  completionRules: ['Complete every mandatory mission in this level.'],
+  failureRoutes: ['Review the failed evidence and retry the mission.'],
+  engineDependencies: ['company', 'progression', 'rules'],
+  nextUnlocks: levelNumber < 15 ? [`beginner-${String(levelNumber + 1).padStart(2, '0')}`] : ['stage-2-16'],
   nextUnlock: levelNumber < 15 ? `beginner-${String(levelNumber + 1).padStart(2, '0')}` : undefined,
 })
 

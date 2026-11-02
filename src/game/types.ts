@@ -23,7 +23,7 @@ export interface BeginnerLevelProgress {
 }
 
 export interface BeginnerProgress {
-  stageId: 'beginner'
+  stageId: string
   xp: number
   reputation: number
   currentLevel: number
@@ -37,18 +37,28 @@ export interface BeginnerMissionDefinition {
   type: 'decision' | 'research' | 'planning' | 'compliance' | 'finance' | 'people' | 'fundraising' | 'operations' | 'governance' | 'sales'
   reward: { xp: number; reputation: number }
   mandatory?: boolean
+  prerequisites?: string[]
+  playerAction?: string
+  completionCriteria?: string[]
+  failureRoutes?: string[]
 }
 
 export interface BeginnerLevelDefinition {
   levelId: string
-  stageId: 'beginner'
+  stageId: string
   levelNumber: number
   name: string
   description: string
   learningObjective: string
+  chapter?: string
   missions: BeginnerMissionDefinition[]
   completionRule: string
   nextUnlock?: string
+  entryConditions?: string[]
+  completionRules?: string[]
+  failureRoutes?: string[]
+  engineDependencies?: string[]
+  nextUnlocks?: string[]
 }
 
 export interface Industry {

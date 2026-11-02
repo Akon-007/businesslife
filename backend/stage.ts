@@ -4,6 +4,11 @@ export interface MissionDefinition {
   description: string
   mandatory: boolean
   reward: { xp: number; reputation: number }
+  type?: string
+  prerequisites?: string[]
+  playerAction?: string
+  completionCriteria?: string[]
+  failureRoutes?: string[]
 }
 
 export interface LevelDefinition {
@@ -15,6 +20,11 @@ export interface LevelDefinition {
   description: string
   learningObjective: string
   missions: MissionDefinition[]
+  entryConditions?: string[]
+  completionRules?: string[]
+  failureRoutes?: string[]
+  engineDependencies?: string[]
+  nextUnlocks?: string[]
 }
 
 const levelData: Array<[string, string, string, string[]]> = [
@@ -37,15 +47,23 @@ const levelData: Array<[string, string, string, string[]]> = [
 
 export const BEGINNER_LEVELS: LevelDefinition[] = levelData.map(([name, description, learningObjective, missions], levelIndex) => ({
   levelId: `beginner-${String(levelIndex + 1).padStart(2, '0')}`,
+  stageId: 'beginner',
   levelNumber: levelIndex + 1,
   name,
   description,
   learningObjective,
+  entryConditions: levelIndex === 0 ? [] : [`Complete Level ${levelIndex}`],
+  completionRules: ['Complete every mandatory mission in this level.'],
+  failureRoutes: ['Review the failed evidence and retry the mission.'],
+  engineDependencies: ['company', 'progression', 'rules'],
+  nextUnlocks: levelIndex < 14 ? [`beginner-${String(levelIndex + 2).padStart(2, '0')}`] : ['stage-2-16'],
   missions: missions.map((mission, missionIndex) => ({
     id: `beginner-${levelIndex + 1}-${missionIndex + 1}`,
     name: mission,
     description: `Complete the ${mission.toLowerCase()} activity and record its evidence.`,
     mandatory: true,
+    type: levelIndex < 2 ? 'decision' : 'operations',
+    completionCriteria: [`Record evidence for: ${mission}.`],
     reward: { xp: levelIndex === 14 && missionIndex === missions.length - 1 ? 200 : 25, reputation: 1 },
   })),
 }))

@@ -27,4 +27,9 @@ export const STAGE_02_LEVELS: LevelDefinition[] = levels.map(([name, description
   learningObjective: objective,
   chapter: index < 3 ? 'Know Your Business' : index < 6 ? 'Build Your Operations' : index < 9 ? 'Build Your Reputation' : index < 13 ? 'Strengthen the Company' : 'Prepare for Growth',
   missions: missions.map((mission, missionIndex) => ({ id: `stage-2-${index + 16}-${missionIndex + 1}`, name: mission, description: `Use the live business records to ${mission.toLowerCase()}.`, mandatory: true, reward: { xp: index === 14 ? 100 : 50, reputation: 2 } })),
+  entryConditions: [`Complete Level ${15 + index}`],
+  completionRules: ['Complete every mandatory mission in this level and review the business evidence.'],
+  failureRoutes: ['Investigate the weakest business metric and retry with a documented adjustment.'],
+  engineDependencies: ['finance', 'operations', 'customers', 'progression'],
+  nextUnlocks: index < 14 ? [`stage-2-${String(index + 2).padStart(2, '0')}`] : ['stage-3-31'],
 }))
