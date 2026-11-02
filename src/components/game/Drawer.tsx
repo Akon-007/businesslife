@@ -305,9 +305,9 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
           <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#c9f269" height={40} />
         </div>
         <div className="mt-1 flex items-center justify-between text-[9.5px] text-white/40">
-          <span>Cash since month 1</span>
+          <span>Cash since day 1</span>
           <span>
-            M{String(game.month).padStart(2, '0')} · {monthLabel(game.month)}
+            Day {game.day} · {monthLabel(game.month)}
           </span>
         </div>
       </section>

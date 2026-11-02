@@ -6,6 +6,12 @@ export interface Player {
   createdAt: string
   wallet: number
   progression: { xp: number; reputation: number }
+  firstName?: string
+  lastName?: string
+  nickname?: string
+  avatar?: string
+  accountEmail?: string
+  passwordHash?: string
 }
 
 export interface Session {

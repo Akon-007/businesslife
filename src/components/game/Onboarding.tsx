@@ -25,6 +25,7 @@ import { Logo } from '../ui/Logo'
 import { buttonClass } from '../ui/Button'
 import { DIFFICULTIES, FOUNDER_BACKGROUNDS, INDUSTRIES, STRATEGIES } from '../../game/data'
 import { useGame } from '../../game/store'
+import { checkCompanyName } from '../../lib/api'
 import { money, number } from '../../lib/format'
 import type { DifficultyId, FounderBackgroundId, IndustryId, StrategyId } from '../../game/types'
 
@@ -47,7 +48,7 @@ const COMPANY_IDEAS = [
   'Harbour & Sons',
 ]
 
-const STEP_TITLES = ['Founder', 'Industry', 'Strategy', 'Profile', 'Briefing']
+const STEP_TITLES = ['Player profile', 'Level 01 · The Idea']
 
 function backgroundPerk(starting: { cash: number; customers: number; quality: number; reputation: number; morale: number }) {
   const parts: string[] = []
@@ -66,11 +67,23 @@ export function Onboarding() {
   const deleteRun = useGame((state) => state.deleteRun)
   const [step, setStep] = useState(0)
   const [founder, setFounder] = useState('')
-  const [company, setCompany] = useState('Kite & Co.')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [avatar, setAvatar] = useState('founder-1')
+  const [accountEmail, setAccountEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [company, setCompany] = useState('')
+  const [problem, setProblem] = useState('')
+  const [solution, setSolution] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [checkingName, setCheckingName] = useState(false)
   const [industry, setIndustry] = useState<IndustryId>('saas')
   const [strategy, setStrategy] = useState<StrategyId>('product')
   const [background, setBackground] = useState<FounderBackgroundId>('operator')
   const [difficulty, setDifficulty] = useState<DifficultyId>('standard')
+
+  const shuffleCompany = () => setCompany(COMPANY_IDEAS[Math.floor(Math.random() * COMPANY_IDEAS.length)])
 
   const industryDef = useMemo(() => INDUSTRIES.find((item) => item.id === industry)!, [industry])
   const strategyDef = useMemo(() => STRATEGIES.find((item) => item.id === strategy)!, [strategy])
@@ -82,24 +95,37 @@ export function Onboarding() {
   const startingCustomers = industryDef.startingCustomers + strategyDef.starting.customers + backgroundDef.starting.customers
   const startingQuality = industryDef.startingQuality + strategyDef.starting.quality + backgroundDef.starting.quality
 
-  const shuffleCompany = () => {
-    const next = COMPANY_IDEAS[Math.floor(Math.random() * COMPANY_IDEAS.length)]
-    setCompany(next)
-  }
-
-  const submit = (event?: FormEvent) => {
+  const submit = async (event?: FormEvent) => {
     event?.preventDefault()
-    if (step < 4) {
+    if (step < 1) {
       setStep((value) => value + 1)
       return
     }
+    setNameError('')
+    setCheckingName(true)
+    try {
+      const availability = await checkCompanyName(company)
+      if (!availability.available) { setNameError('That business name is already in use. Choose a different name.'); return }
+    } catch {
+      setNameError('We could not check that name right now. Please try again.')
+      return
+    } finally { setCheckingName(false) }
+    const founder = `${firstName.trim()} ${lastName.trim()}`.trim()
     start({
-      founder: founder.trim() || 'Founder',
-      company: company.trim() || 'Untitled Co.',
+      founder: nickname.trim() || founder || 'Founder',
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      nickname: nickname.trim(),
+      avatar,
+      accountEmail: accountEmail.trim(),
+      password,
+      company: company.trim(),
+      problem: problem.trim(),
+      solution: solution.trim(),
       industry,
-      strategy,
-      founderBackground: background,
-      difficulty,
+      strategy: 'product',
+      founderBackground: 'operator',
+      difficulty: 'standard',
     })
   }
 
@@ -146,7 +172,7 @@ export function Onboarding() {
 
             <p className="mt-8 inline-flex items-center gap-2 self-start rounded-full bg-ink/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.13em] text-ink-500">
               <span className="grid size-4 place-items-center rounded-full bg-ink text-[8px] text-lime">{step + 1}</span>
-              Step {step + 1} of 5
+              Step {step + 1} of 2
             </p>
 
             <form onSubmit={submit} className="mt-4">
@@ -159,6 +185,38 @@ export function Onboarding() {
                   transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                 >
                   {step === 0 && (
+                    <div>
+                      <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">Create your<br />player profile.</h1>
+                      <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink-500">This is your identity in the multiplayer city. Your company comes next.</p>
+                      <div className="mt-7 grid gap-4 sm:grid-cols-2">
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">First name</span><input autoFocus value={firstName} onChange={(event) => setFirstName(event.target.value)} required maxLength={32} placeholder="Ada" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 text-[15px] font-medium text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">Last name</span><input value={lastName} onChange={(event) => setLastName(event.target.value)} required maxLength={32} placeholder="Mensah" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 text-[15px] font-medium text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                      </div>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">Nickname</span><input value={nickname} onChange={(event) => setNickname(event.target.value)} required maxLength={24} placeholder="Your player name" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 text-[15px] font-medium text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">Avatar</span><div className="mt-2 flex gap-2">{['founder-1', 'founder-2', 'founder-3', 'founder-4'].map((option) => <button key={option} type="button" onClick={() => setAvatar(option)} className={clsx('grid size-12 place-items-center rounded-2xl border text-lg transition', avatar === option ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-100' : 'border-line bg-white')}>{['🧑🏾‍💼', '👩🏾‍💻', '🧑🏿‍🔧', '👩🏽‍🎨'][Number(option.slice(-1)) - 1]}</button>)}</div></label>
+                      </div>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">Account email</span><input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} required placeholder="you@example.com" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 text-[15px] font-medium text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} placeholder="At least 8 characters" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 text-[15px] font-medium text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                      </div>
+                    </div>
+                  )}
+
+                  {step === 1 && (
+                    <div>
+                      <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">Level 01:<br />The Idea.</h1>
+                      <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink-500">Start a real company by choosing a market, naming the problem, proposing a solution and claiming an available business name.</p>
+                      <div className="mt-6 space-y-4">
+                        <div><p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">1 · Choose your industry</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{INDUSTRIES.map((item) => { const Icon = INDUSTRY_ICONS[item.id]; return <button key={item.id} type="button" onClick={() => setIndustry(item.id)} className={clsx('flex items-center gap-2.5 rounded-2xl border p-3 text-left transition', industry === item.id ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-300' : 'border-line bg-white hover:border-brand-300')}><span className="grid size-8 place-items-center rounded-xl bg-paper-3 text-ink-600"><Icon className="size-4" /></span><span><span className="block text-[12px] font-bold text-ink">{item.name}</span><span className="block text-[9.5px] text-ink-400">{item.tagline}</span></span></button> })}</div></div>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">2 · Identify a problem worth solving</span><textarea value={problem} onChange={(event) => setProblem(event.target.value)} required maxLength={240} placeholder="What frustrating customer problem have you noticed?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">3 · Propose a solution</span><textarea value={solution} onChange={(event) => setSolution(event.target.value)} required maxLength={240} placeholder="What will you offer that makes the problem better?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
+                        <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">4 · Pick a business name</span><input value={company} onChange={(event) => { setCompany(event.target.value); setNameError('') }} required maxLength={40} placeholder="Your unique business name" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 font-display text-[17px] font-semibold text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" />{nameError && <p className="mt-2 text-[10.5px] font-semibold text-coral">{nameError}</p>}{checkingName && <p className="mt-2 text-[10.5px] font-semibold text-ink-400">Checking name availability…</p>}</label>
+                      </div>
+                    </div>
+                  )}
+
+                  {false && (
                     <div>
                       <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">
                         Who is building
@@ -273,7 +331,7 @@ export function Onboarding() {
                     </div>
                   )}
 
-                  {step === 1 && (
+                  {false && (
                     <div>
                       <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">
                         What kind of
@@ -615,7 +673,7 @@ export function Onboarding() {
                       </div>
 
                       <p className="mt-3 text-center text-[10.5px] text-ink-400">
-                        36 months · saved automatically · no real money involved
+                        Daily simulation · saved automatically · no artificial finish line
                       </p>
                     </div>
                   )}
@@ -631,8 +689,8 @@ export function Onboarding() {
                   <ArrowLeft className="size-4" />
                   Back
                 </button>
-                <button type="submit" className={buttonClass(step === 4 ? 'lime' : 'primary', 'lg', 'min-w-[190px]')}>
-                  {step === 4 ? (
+                <button type="submit" className={buttonClass(step === 1 ? 'lime' : 'primary', 'lg', 'min-w-[190px]')}>
+                  {step === 1 ? (
                     <>
                       <Rocket className="size-4" />
                       Found {company.trim().split(' ')[0] || 'the company'}

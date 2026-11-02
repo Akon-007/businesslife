@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
   acceptOffer,
-  advanceMonth,
+  advanceDay,
   acknowledgeMissionEvidence,
   declineOffers,
   fireEmployee,
@@ -43,6 +43,14 @@ export interface StartInput {
   strategy: StrategyId
   founderBackground?: FounderBackgroundId
   difficulty?: DifficultyId
+  firstName?: string
+  lastName?: string
+  nickname?: string
+  avatar?: string
+  accountEmail?: string
+  password?: string
+  problem?: string
+  solution?: string
 }
 
 interface GameStore {
@@ -93,7 +101,7 @@ export const useGame = create<GameStore>()(
         const nextRuns = game ? [archive(game), ...runs].slice(0, 8) : runs
         const nextGame = startGame(input)
         set({ game: nextGame, runs: nextRuns })
-        void createRemoteCompany({ founder: nextGame.founder, company: nextGame.company, industry: nextGame.industry, strategy: nextGame.strategy, ambition: 'Launch and reach break-even', startingCash: nextGame.cash })
+        void createRemoteCompany({ founder: nextGame.founder, company: nextGame.company, industry: nextGame.industry, strategy: nextGame.strategy, ambition: 'Launch and reach break-even', startingCash: nextGame.cash, firstName: nextGame.firstName, lastName: nextGame.lastName, nickname: nextGame.nickname, avatar: nextGame.avatar, accountEmail: nextGame.accountEmail, password: input.password, problem: input.problem, solution: input.solution })
           .then((remote) => set((state) => state.game ? { game: { ...state.game, backendCompanyId: remote.id } } : state))
           .catch(() => get().notify('Local simulation is running. Backend sync will retry on the next action.', 'neutral'))
       },
@@ -128,9 +136,9 @@ export const useGame = create<GameStore>()(
           return
         }
         if (game.status !== 'active') return
-        const next = advanceMonth(game)
+        const next = advanceDay(game)
         set({ game: next })
-        void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 30 }).catch(() => undefined)
+        void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 1 }).catch(() => undefined)
       },
       completeMission: () => {
         get().notify('Complete the business action first. The system will mark the mission automatically.', 'neutral')

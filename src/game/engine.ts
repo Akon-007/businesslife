@@ -41,7 +41,8 @@ import type {
 } from './types'
 import { clamp, money, number, pick, rand, uid } from '../lib/format'
 
-export const RUN_LENGTH = 36
+export const RUN_LENGTH = Number.POSITIVE_INFINITY
+export const DAYS_PER_MONTH = 30
 export const SAVE_VERSION = 2
 
 export function createBeginnerProgress(): BeginnerProgress {
@@ -190,12 +191,17 @@ export function startGame(input: {
   founder: string
   company: string
   industry: IndustryId
-  strategy: StrategyId
+  strategy?: StrategyId
   founderBackground?: FounderBackgroundId
   difficulty?: DifficultyId
+  firstName?: string
+  lastName?: string
+  nickname?: string
+  avatar?: string
+  accountEmail?: string
 }): GameState {
   const industry = industryById(input.industry)
-  const strategy = strategyById(input.strategy)
+  const strategy = strategyById(input.strategy ?? 'product')
   const background = founderBackgroundById(input.founderBackground ?? 'operator')
   const difficulty = difficultyById(input.difficulty ?? 'standard')
   const startingQuality = clamp(industry.startingQuality + strategy.starting.quality + background.starting.quality, 15, 85)
@@ -210,12 +216,18 @@ export function startGame(input: {
     version: SAVE_VERSION,
     status: 'active',
     founder: input.founder.trim() || 'Founder',
+    firstName: input.firstName?.trim() || input.founder.trim().split(' ')[0] || 'Founder',
+    lastName: input.lastName?.trim() || input.founder.trim().split(' ').slice(1).join(' '),
+    nickname: input.nickname?.trim() || input.founder.trim().split(' ')[0] || 'Founder',
+    avatar: input.avatar || 'founder-1',
+    accountEmail: input.accountEmail?.trim() || '',
     founderBackground: background.id,
     difficulty: difficulty.id,
     company: input.company.trim() || 'Untitled Co.',
     industry: input.industry,
-    strategy: input.strategy,
+    strategy: strategy.id,
     month: 0,
+    day: 1,
     cash: startingCash,
     debt: 0,
     customers: industry.startingCustomers + strategy.starting.customers + background.starting.customers,
@@ -884,15 +896,16 @@ export function advanceMonth(state: GameState): GameState {
 
   next = { ...next, lastReport: report }
 
-  if (next.month >= RUN_LENGTH && next.status === 'active') {
-    next = {
-      ...next,
-      status: 'completed',
-      endedReason: `You built ${next.company} for ${RUN_LENGTH} months.`,
-    }
-  }
-
   return next
+}
+
+export function advanceDay(state: GameState): GameState {
+  const nextDay = (state.day ?? state.month * DAYS_PER_MONTH + 1) + 1
+  if (nextDay % DAYS_PER_MONTH === 0) {
+    const monthState = advanceMonth({ ...state, day: nextDay })
+    return { ...monthState, day: nextDay }
+  }
+  return { ...state, day: nextDay }
 }
 
 function unlock(state: GameState, achievement: string): GameState {
@@ -1287,6 +1300,12 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     ...game,
     version: SAVE_VERSION,
     beginner: migratedProgress,
+    day: game.day ?? ((game.month ?? 0) * DAYS_PER_MONTH + 1),
+    firstName: game.firstName ?? game.founder?.split(' ')[0] ?? 'Founder',
+    lastName: game.lastName ?? game.founder?.split(' ').slice(1).join(' ') ?? '',
+    nickname: game.nickname ?? game.founder?.split(' ')[0] ?? 'Founder',
+    avatar: game.avatar ?? 'founder-1',
+    accountEmail: game.accountEmail ?? '',
     missionEvidence: game.missionEvidence ?? [],
     founderBackground: game.founderBackground ?? 'operator',
     difficulty: game.difficulty ?? 'standard',
