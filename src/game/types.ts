@@ -262,6 +262,8 @@ export interface GameState {
   founderBackground: FounderBackgroundId
   difficulty: DifficultyId
   company: string
+  problem: string
+  solution: string
   industry: IndustryId
   strategy: StrategyId
   month: number

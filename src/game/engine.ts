@@ -82,6 +82,10 @@ export function acknowledgeMissionEvidence(state: GameState, evidence: string[])
   return { ...next, beginner: { ...next.beginner, xp: next.beginner.xp + xp, reputation: next.beginner.reputation + reputation, levels } }
 }
 
+export function updateIdea(state: GameState, input: { industry?: IndustryId; company?: string; problem?: string; solution?: string }): GameState {
+  return { ...state, ...(input.industry ? { industry: input.industry } : {}), ...(input.company !== undefined ? { company: input.company.trim() } : {}), ...(input.problem !== undefined ? { problem: input.problem.trim() } : {}), ...(input.solution !== undefined ? { solution: input.solution.trim() } : {}) }
+}
+
 export function completeBeginnerMission(state: GameState, missionId: string): GameState {
   const level = ALL_LEVELS.find((definition) => definition.missions.some((mission) => mission.id === missionId))
   if (!level || state.beginner.currentLevel !== level.levelNumber) return state
@@ -199,6 +203,8 @@ export function startGame(input: {
   nickname?: string
   avatar?: string
   accountEmail?: string
+  problem?: string
+  solution?: string
 }): GameState {
   const industry = industryById(input.industry)
   const strategy = strategyById(input.strategy ?? 'product')
@@ -223,7 +229,9 @@ export function startGame(input: {
     accountEmail: input.accountEmail?.trim() || '',
     founderBackground: background.id,
     difficulty: difficulty.id,
-    company: input.company.trim() || 'Untitled Co.',
+    company: input.company.trim() || 'New Venture',
+    problem: input.problem?.trim() || '',
+    solution: input.solution?.trim() || '',
     industry: input.industry,
     strategy: strategy.id,
     month: 0,
@@ -266,7 +274,7 @@ export function startGame(input: {
     missionEvidence: [],
   }
 
-  const withValuation = acknowledgeMissionEvidence({ ...base, valuation: computeValuation(base) }, ['beginner-1-1', 'beginner-1-2', 'beginner-1-3', 'beginner-1-4', 'beginner-1-5', 'beginner-1-6'])
+  const withValuation = { ...base, valuation: computeValuation(base) }
   return addLog(withValuation, {
     month: 0,
     title: `${withValuation.company} opens its doors`,
@@ -1306,6 +1314,8 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     nickname: game.nickname ?? game.founder?.split(' ')[0] ?? 'Founder',
     avatar: game.avatar ?? 'founder-1',
     accountEmail: game.accountEmail ?? '',
+    problem: game.problem ?? '',
+    solution: game.solution ?? '',
     missionEvidence: game.missionEvidence ?? [],
     founderBackground: game.founderBackground ?? 'operator',
     difficulty: game.difficulty ?? 'standard',

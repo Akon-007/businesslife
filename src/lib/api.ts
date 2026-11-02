@@ -32,7 +32,8 @@ export async function checkCompanyName(name: string) {
 
 export async function createRemoteCompany(input: { founder: string; company: string; industry: string; strategy: string; ambition: string; startingCash: number; firstName?: string; lastName?: string; nickname?: string; avatar?: string; accountEmail?: string; password?: string; problem?: string; solution?: string }) {
   await ensureApiSession(input.founder, input)
-  return request<{ id: string }>('/api/companies', { method: 'POST', body: JSON.stringify({ name: input.company, sector: input.industry, businessModel: input.strategy, problem: input.problem ?? 'A customer problem worth solving', solution: input.solution ?? 'A first useful product or service', ambition: input.ambition, initialCapitalKobo: Math.round(input.startingCash * 100) }) })
+  const initialName = input.company === 'New Venture' ? `New Venture · ${input.founder}` : input.company
+  return request<{ id: string }>('/api/companies', { method: 'POST', body: JSON.stringify({ name: initialName, sector: input.industry, businessModel: input.strategy, problem: input.problem ?? 'A customer problem worth solving', solution: input.solution ?? 'A first useful product or service', ambition: input.ambition, initialCapitalKobo: Math.round(input.startingCash * 100) }) })
 }
 
 export function syncCompanyAction(companyId: string | undefined, action: string, payload: Json = {}, idempotencyKey?: string) {

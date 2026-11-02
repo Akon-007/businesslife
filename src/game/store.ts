@@ -18,6 +18,7 @@ import {
   setMarketing,
   setPrice,
   setProduct,
+  updateIdea,
   setRestock,
   setTraining,
   startGame,
@@ -86,6 +87,7 @@ interface GameStore {
   notify: (message: string, tone?: Toast['tone']) => void
   completeMission: (missionId: string) => void
   recordEvidence: (evidence: string[]) => void
+  saveIdea: (input: { industry?: IndustryId; company?: string; problem?: string; solution?: string }) => void
 }
 
 const archive = (game: GameState): ArchivedRun => ({ id: uid(), savedAt: Date.now(), game })
@@ -153,6 +155,19 @@ export const useGame = create<GameStore>()(
         set({ game: next })
         for (const missionId of newlyCompleted) void syncMission(game.backendCompanyId, missionId).catch(() => undefined)
         if (newlyCompleted.length) get().notify(`${newlyCompleted.length === 1 ? 'Mission' : 'Missions'} completed from your business actions.`, 'good')
+      },
+      saveIdea: (input) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const next = updateIdea(game, input)
+        set({ game: next })
+        void syncCompanyAction(game.backendCompanyId, 'idea', input).catch(() => get().notify('That business name may already be taken. Choose another name.', 'bad'))
+        const evidence: string[] = []
+        if (input.industry) evidence.push('beginner-1-1')
+        if (input.problem?.trim()) evidence.push('beginner-1-2')
+        if (input.solution?.trim()) evidence.push('beginner-1-3')
+        if (input.company?.trim() && input.company.trim() !== 'New Venture') evidence.push('beginner-1-4')
+        get().recordEvidence(evidence)
       },
       resolve: (optionId) => {
         const { game } = get()

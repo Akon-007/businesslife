@@ -279,11 +279,9 @@ const beginnerLevel = (
 export const BEGINNER_LEVELS: BeginnerLevelDefinition[] = [
   beginnerLevel(1, 'The Idea', 'Turn a problem into a business worth testing.', 'A business starts with a customer, a problem and a way to create value.', [
     beginnerMission('idea-industry', 'Choose your industry', 'Select the sector your company will operate in.', 'decision', 10),
-    beginnerMission('idea-opportunity', 'Identify an opportunity', 'Save the problem your company intends to solve.', 'decision', 10),
-    beginnerMission('idea-solution', 'Define your solution', 'Describe the first product or service you will offer.', 'decision', 10),
-    beginnerMission('idea-model', 'Choose your business model', 'Choose how the company will earn revenue.', 'decision', 10),
-    beginnerMission('idea-name', 'Name your business', 'Give the company a name and make it yours.', 'decision', 5),
-    beginnerMission('idea-ambition', 'Set your ambition', 'Choose the first outcome you are building toward.', 'decision', 5),
+    beginnerMission('idea-problem', 'Identify a problem worth solving', 'Name the customer problem your company intends to solve.', 'decision', 10),
+    beginnerMission('idea-solution', 'Propose a solution', 'Describe the first product or service you will offer.', 'decision', 10),
+    beginnerMission('idea-name', 'Pick a business name', 'Choose an available name for your company.', 'decision', 10),
   ]),
   beginnerLevel(2, 'Market Discovery', 'Learn who might buy before you spend heavily.', 'Demand is discovered through customers, competitors and evidence.', ['customers', 'market-research', 'competitors', 'interviews', 'pricing', 'positioning', 'demand'].map((id, i) => beginnerMission(`market-${id}`, ['Define your customers', 'Explore the market', 'Identify competitors', 'Study customer needs', 'Compare prices', 'Identify your advantage', 'Assess demand'][i], 'Record evidence from the simulated market.', 'research', 10))),
   beginnerLevel(3, 'Business Planning', 'Turn research into a model you can operate.', 'Pricing, costs, revenue and cash flow make an idea testable.', ['offering', 'startup-costs', 'pricing', 'suppliers', 'expenses', 'revenue', 'cash-flow', 'plan'].map((id, i) => beginnerMission(`plan-${id}`, ['Define your offering', 'Estimate startup costs', 'Set your pricing', 'Identify suppliers', 'Estimate monthly expenses', 'Build revenue projections', 'Create a cash-flow plan', 'Prepare your business plan'][i], 'Add this section to the operating plan.', 'planning', i === 7 ? 20 : 10))),

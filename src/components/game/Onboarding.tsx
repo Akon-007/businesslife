@@ -48,7 +48,7 @@ const COMPANY_IDEAS = [
   'Harbour & Sons',
 ]
 
-const STEP_TITLES = ['Player profile', 'Level 01 · The Idea']
+const STEP_TITLES = ['Player profile']
 
 function backgroundPerk(starting: { cash: number; customers: number; quality: number; reputation: number; morale: number }) {
   const parts: string[] = []
@@ -97,7 +97,7 @@ export function Onboarding() {
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault()
-    if (step < 1) {
+    if (step < 0) {
       setStep((value) => value + 1)
       return
     }
@@ -119,9 +119,9 @@ export function Onboarding() {
       avatar,
       accountEmail: accountEmail.trim(),
       password,
-      company: company.trim(),
-      problem: problem.trim(),
-      solution: solution.trim(),
+      company: 'New Venture',
+      problem: '',
+      solution: '',
       industry,
       strategy: 'product',
       founderBackground: 'operator',
@@ -203,7 +203,7 @@ export function Onboarding() {
                     </div>
                   )}
 
-                  {step === 1 && (
+                  {false && (
                     <div>
                       <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">Level 01:<br />The Idea.</h1>
                       <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink-500">Start a real company by choosing a market, naming the problem, proposing a solution and claiming an available business name.</p>
@@ -689,11 +689,11 @@ export function Onboarding() {
                   <ArrowLeft className="size-4" />
                   Back
                 </button>
-                <button type="submit" className={buttonClass(step === 1 ? 'lime' : 'primary', 'lg', 'min-w-[190px]')}>
-                  {step === 1 ? (
+                <button type="submit" className={buttonClass(step === 0 ? 'lime' : 'primary', 'lg', 'min-w-[190px]')}>
+                  {step === 0 ? (
                     <>
                       <Rocket className="size-4" />
-                      Found {company.trim().split(' ')[0] || 'the company'}
+                      Enter the city
                     </>
                   ) : (
                     <>

@@ -28,7 +28,7 @@ export interface LevelDefinition {
 }
 
 const levelData: Array<[string, string, string, string[]]> = [
-  ['The Idea', 'Turn a problem into a business worth testing.', 'A business starts with a customer, a problem and a way to create value.', ['Choose your industry', 'Identify an opportunity', 'Define your solution', 'Choose your business model', 'Name your business', 'Set your ambition']],
+  ['The Idea', 'Turn a problem into a business worth testing.', 'A business starts with a customer, a problem and a way to create value.', ['Choose your industry', 'Identify a problem worth solving', 'Propose a solution', 'Pick a business name']],
   ['Market Discovery', 'Learn who might buy before you spend heavily.', 'Demand is discovered through customers, competitors and evidence.', ['Define your customers', 'Explore the market', 'Identify competitors', 'Study customer needs', 'Compare prices', 'Identify your advantage', 'Assess demand']],
   ['Business Planning', 'Turn research into a model you can operate.', 'Pricing, costs, revenue and cash flow make an idea testable.', ['Define your offering', 'Estimate startup costs', 'Set your pricing', 'Identify suppliers', 'Estimate monthly expenses', 'Build revenue projections', 'Create a cash-flow plan', 'Prepare your business plan']],
   ['Company Formation', 'Create the legal and ownership shell of the company.', 'A company needs a clear identity, directors and ownership.', ['Submit registration', 'Appoint directors', 'Allocate founder shares', 'Document founder agreements']],

@@ -42,7 +42,7 @@ import {
 import { Stat } from '../components/game/bits'
 import { useGame } from '../game/store'
 import { buildInsights, DAYS_PER_MONTH, getMetrics } from '../game/engine'
-import { ECONOMY_COPY, industryById, strategyById } from '../game/data'
+import { ECONOMY_COPY, INDUSTRIES, industryById, strategyById } from '../game/data'
 import { ALL_LEVELS } from '../game/progression'
 import type { CrisisOption, GameMetrics, GameState } from '../game/types'
 import { money, monthLabel, number, percent } from '../lib/format'
@@ -358,6 +358,11 @@ function TutorialCard({ step, onAction, onSkip }: { step: number; onAction: () =
 }
 
 function MissionCoach({ game, onOpen }: { game: GameState; onOpen: () => void }) {
+  const saveIdea = useGame((state) => state.saveIdea)
+  const [ideaIndustry, setIdeaIndustry] = useState(game.industry)
+  const [ideaCompany, setIdeaCompany] = useState(game.company === 'New Venture' ? '' : game.company)
+  const [ideaProblem, setIdeaProblem] = useState(game.problem)
+  const [ideaSolution, setIdeaSolution] = useState(game.solution)
   const level = ALL_LEVELS[game.beginner.currentLevel - 1]
   const progress = game.beginner.levels.find((item) => item.levelNumber === game.beginner.currentLevel)
   if (!level || !progress) return null
@@ -373,6 +378,7 @@ function MissionCoach({ game, onOpen }: { game: GameState; onOpen: () => void })
           <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[9px] font-bold text-white/70">{completed}/{level.missions.length}</span>
         </div>
         <div className="p-3.5">
+          {game.beginner.currentLevel === 1 && <div className="mb-3 space-y-2.5 rounded-xl border border-brand-100 bg-brand-50/60 p-3"><p className="text-[9px] font-bold uppercase tracking-[0.13em] text-brand-700">Build the idea here</p><div className="grid grid-cols-2 gap-1.5">{INDUSTRIES.map((item) => <button key={item.id} type="button" onClick={() => setIdeaIndustry(item.id)} className={clsx('rounded-lg border px-2 py-1.5 text-left text-[9.5px] font-bold', ideaIndustry === item.id ? 'border-brand-500 bg-white text-brand-800' : 'border-line bg-white/60 text-ink-500')}>{item.name}</button>)}</div><input value={ideaCompany} onChange={(event) => setIdeaCompany(event.target.value)} placeholder="Business name" className="h-9 w-full rounded-lg border border-line bg-white px-2.5 text-[10.5px] text-ink outline-none focus:border-brand-400" /><textarea value={ideaProblem} onChange={(event) => setIdeaProblem(event.target.value)} placeholder="Problem worth solving" className="min-h-14 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[10.5px] text-ink outline-none focus:border-brand-400" /><textarea value={ideaSolution} onChange={(event) => setIdeaSolution(event.target.value)} placeholder="Your proposed solution" className="min-h-14 w-full rounded-lg border border-line bg-white px-2.5 py-2 text-[10.5px] text-ink outline-none focus:border-brand-400" /><button type="button" onClick={() => saveIdea({ industry: ideaIndustry, company: ideaCompany, problem: ideaProblem, solution: ideaSolution })} className="w-full rounded-lg bg-brand-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-brand-800">Save idea and check the name</button></div>}
           {nextMission ? <><p className="text-[9px] font-bold uppercase tracking-[0.13em] text-brand-700">What to do next</p><p className="mt-1 text-[14px] font-bold leading-tight text-ink">{nextMission.name}</p><p className="mt-1.5 text-[10.5px] leading-relaxed text-ink-500">{nextMission.description}</p><div className="mt-3 flex items-center gap-2"><button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-700 px-3 py-2 text-[10px] font-bold text-white shadow-sm hover:bg-brand-800">Open mission steps <ArrowRight className="size-3" /></button><span className="text-[9px] font-semibold text-ink-400">Finish the required work, then record evidence.</span></div></> : <><div className="flex items-center gap-2 text-brand-700"><Check className="size-4" /><p className="text-[12px] font-bold">Level complete</p></div><p className="mt-1 text-[10.5px] text-ink-500">Open the journey to review what you learned and see the next level.</p><button type="button" onClick={onOpen} className="mt-3 rounded-xl bg-ink px-3 py-2 text-[10px] font-bold text-white">Review level map</button></>}
           <div className="mt-3 h-1 overflow-hidden rounded-full bg-ink/10"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(completed / level.missions.length) * 100}%` }} /></div>
         </div>

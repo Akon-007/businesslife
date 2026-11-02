@@ -83,10 +83,10 @@ function ledger(company: Company, type: Company['transactions'][number]['type'],
 }
 
 function createCompany(playerId: string, input: Record<string, unknown>): Company {
-  required(input, ['name', 'sector', 'problem', 'solution', 'businessModel', 'ambition'])
+  required(input, ['name', 'sector', 'businessModel', 'ambition'])
   const timestamp = now()
   return {
-    id: newId('co'), playerId, name: String(input.name).trim(), sector: String(input.sector), businessModel: String(input.businessModel), problem: String(input.problem), solution: String(input.solution), ambition: String(input.ambition), status: 'draft', createdAt: timestamp, updatedAt: timestamp, revenue: 0, expenses: 0,
+    id: newId('co'), playerId, name: String(input.name).trim(), sector: String(input.sector), businessModel: String(input.businessModel), problem: String(input.problem ?? ''), solution: String(input.solution ?? ''), ambition: String(input.ambition), status: 'draft', createdAt: timestamp, updatedAt: timestamp, revenue: 0, expenses: 0,
     ownership: [{ holder: 'founder', shares: 100 }], research: [], businessPlan: null, registration: null, compliance: [], bankApplication: null, employees: [], fundingRequests: [], pitchDeck: null, investorApplications: [], offers: [], brand: null, products: [], suppliers: [], campaigns: [], meetings: [], orders: [], transactions: [], journal: [], events: [], progression: { xp: 0, reputation: 0, currentLevel: 1, completedMissions: [] }, balanceKobo: Math.round(Number(input.initialCapitalKobo ?? 0)), revenueKobo: 0, expensesKobo: 0, balance: Math.round(Number(input.initialCapitalKobo ?? 0)) / 100, simulation: { day: 1, lastAdvancedAt: timestamp, processedSchedules: [] }, notifications: [], popups: [], socialPosts: [], socialComments: [], reputationIncidents: [], conversations: [], messages: [], reputationProfile: { customerTrust: 50, productQuality: 50, deliveryReliability: 50, paymentReliability: 50, employeeReputation: 50, publicSentiment: 50, businessCredibility: 50 },
   }
 }
@@ -236,7 +236,8 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       if (level.missions.every((item) => company.progression.completedMissions.includes(item.id)) && level.levelNumber < 75) company.progression.currentLevel = level.levelNumber + 1
       event(company, 'mission_completed', { missionId }); await saveDatabase(database); send(response, 200, company.progression); return
     }
-    if (request.method === 'POST' && action === 'research') { company.research.push({ id: newId('research'), ...input, createdAt: now() }); event(company, 'market_research_completed'); }
+    if (request.method === 'POST' && action === 'idea') { const requestedName = String(input.company ?? company.name).trim(); if (database.companies.some((item) => item.id !== company.id && item.name.trim().toLowerCase() === requestedName.toLowerCase())) { error(response, 409, 'That business name is already taken. Choose another name.'); return } if (input.industry) company.sector = String(input.industry); if (input.company) company.name = requestedName; if (input.problem) company.problem = String(input.problem); if (input.solution) company.solution = String(input.solution); event(company, 'business_idea_updated'); }
+    else if (request.method === 'POST' && action === 'research') { company.research.push({ id: newId('research'), ...input, createdAt: now() }); event(company, 'market_research_completed'); }
     else if (request.method === 'PUT' && action === 'business-plan') { company.businessPlan = { ...input, version: Number(company.businessPlan?.version ?? 0) + 1, updatedAt: now() }; event(company, 'business_plan_saved'); }
     else if (request.method === 'POST' && action === 'registration') { company.registration = { status: 'approved', reference: newId('reg'), submittedAt: now(), ...input }; company.status = 'registered'; event(company, 'company_registered'); }
     else if (request.method === 'GET' && action === 'compliance') { send(response, 200, { requirements: [{ id: 'tax', name: 'Tax registration', status: company.compliance.find((item) => item.id === 'tax')?.status ?? 'required' }, { id: 'sector', name: `${company.sector} operating permit`, status: company.compliance.find((item) => item.id === 'sector')?.status ?? 'required' }] }); return }
