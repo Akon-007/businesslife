@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.backend.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./backend-dist",
+    "rootDir": "./backend",
+    "declaration": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": false
+  },
+  "files": ["backend/server.ts"]
+}
