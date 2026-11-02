@@ -659,7 +659,7 @@ function TalentPanel() {
           disabled={game.team.length === 0}
         />
         <p className="mt-2 text-[10px] leading-relaxed text-ink-400">
-          Each $9,000 per teammate fills the training bar. Promotions raise skill and salary — homegrown leaders are
+          Each ₦9,000 per teammate fills the training bar. Promotions raise skill and salary — homegrown leaders are
           cheaper than senior hires.
         </p>
       </PanelSection>
@@ -701,7 +701,7 @@ function TalentPanel() {
             className="inline-flex items-center gap-1 text-[10.5px] font-bold text-brand-700 transition hover:text-brand-600 disabled:opacity-40"
           >
             <RefreshCcw className="size-3" />
-            Refresh $500
+                    Refresh ₦500
           </button>
         }
       >
@@ -751,7 +751,7 @@ function TalentPanel() {
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
         <Coins className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
         <p className="text-[11px] leading-relaxed text-ink-700">
-          Payroll is your largest fixed cost. A $6,000 salary is <b>{money(72_000)}</b> a year — against your current
+          Payroll is your largest fixed cost. A ₦6,000 salary is <b>{money(72_000)}</b> a year — against your current
           burn, that is real runway.
         </p>
       </div>
@@ -923,7 +923,7 @@ function BankPanel() {
       </PanelSection>
 
       <p className="px-1 text-[10px] leading-relaxed text-ink-400">
-        Credit limit: eight months of revenue, between $20k and $300k. Interest accrues monthly and compounds through
+        Credit limit: eight months of revenue, between ₦20m and ₦300m. Interest accrues monthly and compounds through
         your monthly costs.
       </p>
     </>

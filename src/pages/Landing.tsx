@@ -353,7 +353,7 @@ function FoundPreview() {
       </div>
       <div className="mt-2.5 flex items-center justify-between rounded-xl bg-lime/50 px-3 py-2">
         <p className="text-[10px] font-bold text-ink-700">Starting cash</p>
-        <p className="font-display text-sm font-semibold text-ink">$170,000</p>
+        <p className="font-display text-sm font-semibold text-ink">₦170,000</p>
       </div>
     </div>
   )
@@ -371,9 +371,9 @@ function RunPreview() {
       </div>
       <div className="mt-3 space-y-3">
         {[
-          { label: 'Price', value: '$79', fill: '62%' },
-          { label: 'Marketing', value: '$3,000', fill: '44%' },
-          { label: 'Product', value: '$4,500', fill: '55%' },
+          { label: 'Price', value: '₦79,000', fill: '62%' },
+          { label: 'Marketing', value: '₦3,000,000', fill: '44%' },
+          { label: 'Product', value: '₦4,500,000', fill: '55%' },
         ].map((row) => (
           <div key={row.label}>
             <div className="flex items-baseline justify-between text-[10px] font-semibold">
@@ -389,7 +389,7 @@ function RunPreview() {
       <div className="mt-3.5 flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
         <div>
           <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Projected cash</p>
-          <p className="font-display text-base font-semibold">$238,400</p>
+          <p className="font-display text-base font-semibold">₦238,400,000</p>
         </div>
         <span className="rounded-full bg-white px-3 py-1.5 text-[10px] font-bold text-ink">Close month →</span>
       </div>
@@ -405,7 +405,7 @@ function ReportPreview() {
           <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink-400">Month 08 report</p>
           <p className="mt-0.5 font-display text-lg font-semibold text-ink">A rough month. A useful one.</p>
         </div>
-        <span className="rounded-full bg-coral/10 px-2 py-1 text-[9px] font-bold text-coral">−$11.2k</span>
+        <span className="rounded-full bg-coral/10 px-2 py-1 text-[9px] font-bold text-coral">−₦11.2m</span>
       </div>
       <div className="mt-2 -mx-1">
         <Sparkline data={[148, 155, 150, 162, 158, 170, 159, 158]} color="#e05a3f" height={42} />
@@ -512,15 +512,15 @@ function CashVisual() {
       <div>
         <div className="flex items-baseline justify-between">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-400">Cash on hand</p>
-          <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[9.5px] font-bold text-brand-700">+$18k</span>
+          <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[9.5px] font-bold text-brand-700">+₦18m</span>
         </div>
-        <p className="mt-1 font-display text-2xl font-semibold text-ink">$238,400</p>
+        <p className="mt-1 font-display text-2xl font-semibold text-ink">₦238,400,000</p>
         <Sparkline data={[92, 108, 103, 126, 118, 145, 160, 152, 178, 205, 196, 238]} height={56} />
       </div>
       <div className="space-y-2.5 rounded-xl bg-white p-3 ring-1 ring-line">
-        <BarRow label="Revenue" value={24_000} max={30_000} color="#12a060" valueLabel="$24.0k" />
-        <BarRow label="Payroll" value={19_000} max={30_000} color="#7c6cf6" valueLabel="$19.0k" />
-        <BarRow label="Other costs" value={12_000} max={30_000} color="#ffc94a" valueLabel="$12.0k" />
+        <BarRow label="Revenue" value={24_000} max={30_000} color="#12a060" valueLabel="₦24.0m" />
+        <BarRow label="Payroll" value={19_000} max={30_000} color="#7c6cf6" valueLabel="₦19.0m" />
+        <BarRow label="Other costs" value={12_000} max={30_000} color="#ffc94a" valueLabel="₦12.0m" />
         <div className="flex items-center justify-between border-t border-line pt-2 text-[10.5px]">
           <span className="font-semibold text-ink-500">Runway</span>
           <span className="font-bold text-ink">11.4 months</span>
@@ -534,9 +534,9 @@ function HireVisual() {
   return (
     <div className="space-y-2">
       {[
-        { name: 'Amara Okafor', role: 'Engineer', skill: '8.4', pay: '$7.1k' },
-        { name: 'Tunde Mensah', role: 'Sales lead', skill: '7.2', pay: '$5.4k' },
-        { name: 'Hana Sato', role: 'Operator', skill: '6.8', pay: '$4.2k' },
+        { name: 'Amara Okafor', role: 'Engineer', skill: '8.4', pay: '₦7.1m' },
+        { name: 'Tunde Mensah', role: 'Sales lead', skill: '7.2', pay: '₦5.4m' },
+        { name: 'Hana Sato', role: 'Operator', skill: '6.8', pay: '₦4.2m' },
       ].map((person, index) => (
         <div key={person.name} className="flex items-center gap-2.5 rounded-xl bg-paper-3/60 p-2.5 ring-1 ring-line/60">
           <span
@@ -565,16 +565,16 @@ function PriceVisual() {
     <div className="rounded-2xl bg-ink-950 p-4 text-white">
       <div className="flex items-baseline justify-between">
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Your price</p>
-        <p className="font-display text-2xl font-semibold text-lime">$79</p>
+        <p className="font-display text-2xl font-semibold text-lime">₦79,000</p>
       </div>
       <div className="relative mt-4 h-1.5 rounded-full bg-white/15">
         <div className="absolute inset-y-0 left-0 w-[58%] rounded-full bg-lime" />
         <span className="absolute -top-1.5 left-[58%] size-4 -translate-x-1/2 rounded-full border-2 border-ink bg-lime shadow" />
       </div>
       <div className="mt-1.5 flex justify-between text-[8.5px] font-semibold text-white/35">
-        <span>$29</span>
-        <span>market avg. $79</span>
-        <span>$299</span>
+        <span>₦29,000</span>
+        <span>market avg. ₦79,000</span>
+        <span>₦299,000</span>
       </div>
       <div className="mt-4 rounded-xl bg-white/[0.07] px-3 py-2.5">
         <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Forecast</p>
@@ -594,10 +594,10 @@ function RaiseVisual() {
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-400">Term sheet</p>
         <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-ink-500 ring-1 ring-line">Offer 1 of 2</span>
       </div>
-      <p className="mt-2 font-display text-xl font-semibold text-ink">$250,000</p>
+      <p className="mt-2 font-display text-xl font-semibold text-ink">₦250,000,000</p>
       <p className="text-[10.5px] text-ink-500">for 14.3% of the company</p>
       <div className="mt-3 space-y-1.5 text-[10px] text-ink-600">
-        {['$1.5M pre-money valuation', '1x non-participating preference', 'Board observer seat'].map((term) => (
+        {['₦1.5B pre-money valuation', '1x non-participating preference', 'Board observer seat'].map((term) => (
           <div key={term} className="flex items-center gap-1.5">
             <BadgeCheck className="size-3 text-brand-600" /> {term}
           </div>
@@ -652,7 +652,7 @@ function AdvisorVisual() {
       </div>
       <div className="mt-3 rounded-xl bg-white/[0.07] p-3">
         <p className="text-[11px] leading-relaxed text-white/75">
-          You are spending $4.5k on marketing while service quality falls. The next cohort of customers will churn
+          You are spending ₦4.5m on marketing while service quality falls. The next cohort of customers will churn
           before your ads pay back. Fix quality first.
         </p>
       </div>
@@ -717,9 +717,9 @@ function MiniCase() {
                 just asked for a discount. Choose — then live with the next twelve months.
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-white/40">
-                <span className="inline-flex items-center gap-1.5"><CircleDollarSign className="size-3.5 text-lime" /> $79 avg. price</span>
+                <span className="inline-flex items-center gap-1.5"><CircleDollarSign className="size-3.5 text-lime" /> ₦79,000 avg. price</span>
                 <span className="inline-flex items-center gap-1.5"><Users className="size-3.5 text-lime" /> 290 customers</span>
-                <span className="inline-flex items-center gap-1.5"><Wallet className="size-3.5 text-lime" /> $238k cash</span>
+                <span className="inline-flex items-center gap-1.5"><Wallet className="size-3.5 text-lime" /> ₦238m cash</span>
               </div>
             </div>
 

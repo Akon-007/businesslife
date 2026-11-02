@@ -25,7 +25,7 @@ import {
   toggleDealDiscount,
 } from './engine'
 import type { DifficultyId, FounderBackgroundId, GameState, IndustryId, StrategyId } from './types'
-import { uid } from '../lib/format'
+import { money, uid } from '../lib/format'
 import { createRemoteCompany, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
 
 type Toast = { id: string; message: string; tone: 'good' | 'bad' | 'neutral' }
@@ -182,7 +182,7 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game || game.status !== 'active') return
         if (game.cash < 500) {
-          get().notify('Refreshing the candidate pool costs $500.', 'bad')
+          get().notify(`Refreshing the candidate pool costs ${money(500)}.`, 'bad')
           return
         }
         set({ game: refreshCandidates(game) })
@@ -281,12 +281,12 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game || game.status !== 'active') return
         if (game.cash < 1_200) {
-          get().notify('Pushing a deal costs $1,200 in cash.', 'bad')
+          get().notify(`Pushing a deal costs ${money(1_200)} in cash.`, 'bad')
           return
         }
         set({ game: pushDeal(game, dealId) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, action: 'push', cost: 1200 }, `deal-push-${dealId}`).catch(() => undefined)
-        get().notify('You spent $1,200 pushing the deal forward.', 'neutral')
+        get().notify(`You spent ${money(1_200)} pushing the deal forward.`, 'neutral')
       },
       openBranch: (branchId) => {
         const { game } = get()
@@ -298,7 +298,7 @@ export const useGame = create<GameStore>()(
           return
         }
         if (game.cash < branch.launchCost) {
-          get().notify(`You need ${branch.launchCost.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} in cash to launch.`, 'bad')
+          get().notify(`You need ${money(branch.launchCost)} in cash to launch.`, 'bad')
           return
         }
         set({ game: openBranch(game, branchId) })

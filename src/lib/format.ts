@@ -20,9 +20,10 @@ export const money = (n: number, opts: { compact?: boolean; sign?: boolean } = {
   }
 
   const digits = compact && Math.abs(value) < 100 ? 1 : 0
-  const formatted = new Intl.NumberFormat('en-US', {
+  const formatted = new Intl.NumberFormat('en-NG', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'NGN',
+    currencyDisplay: 'symbol',
     notation: 'standard',
     maximumFractionDigits: suffix ? digits : 0,
   }).format(Math.abs(value))
