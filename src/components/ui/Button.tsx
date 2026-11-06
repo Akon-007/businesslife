@@ -10,12 +10,12 @@ const base =
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-brand-600 text-white shadow-[0_10px_24px_-10px_rgba(9,107,65,0.65),inset_0_1px_0_rgba(255,255,255,0.16)] hover:bg-brand-700 hover:shadow-[0_14px_30px_-12px_rgba(9,107,65,0.7)]',
+    'bg-brand-500 text-white shadow-[0_10px_24px_-12px_rgba(23,107,255,0.55),inset_0_1px_0_rgba(255,255,255,0.18)] hover:bg-brand-600 hover:shadow-[0_14px_30px_-14px_rgba(23,107,255,0.6)]',
   secondary:
-    'bg-white text-ink border border-line shadow-[0_1px_2px_rgba(10,29,46,0.05)] hover:border-line-strong hover:bg-paper-2',
+    'bg-white text-ink border border-line shadow-[0_1px_2px_rgba(16,24,39,0.05)] hover:border-line-strong hover:bg-paper',
   ghost: 'text-ink-600 hover:bg-ink/5 hover:text-ink',
-  dark: 'bg-ink text-white shadow-[0_10px_24px_-12px_rgba(6,19,31,0.8)] hover:bg-ink-800',
-  lime: 'bg-lime text-ink shadow-[0_10px_24px_-12px_rgba(201,242,105,0.7)] hover:brightness-[0.97]',
+  dark: 'bg-ink-900 text-white shadow-[0_10px_24px_-14px_rgba(8,13,22,0.8)] hover:bg-ink-800',
+  lime: 'bg-success text-white shadow-[0_10px_24px_-12px_rgba(23,201,149,0.55)] hover:bg-success-strong',
 }
 
 const sizes: Record<Size, string> = {

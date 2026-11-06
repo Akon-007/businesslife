@@ -13,6 +13,7 @@ import {
   Handshake,
   Landmark,
   MapPin,
+  Receipt,
   RotateCcw,
   ShieldAlert,
   Smartphone,
@@ -78,12 +79,13 @@ const QUICK_ACTIONS: { panel: PanelId; label: string; icon: LucideIcon }[] = [
   { panel: 'bank', label: 'Bank', icon: Landmark },
   { panel: 'investors', label: 'Raise', icon: Handshake },
   { panel: 'crisis', label: 'Crisis', icon: ShieldAlert },
+  { panel: 'finance', label: 'Finance', icon: Receipt },
   { panel: 'journey', label: 'Journey', icon: Trophy },
   { panel: 'apps', label: 'Apps', icon: Smartphone },
   { panel: 'nova', label: 'Nova', icon: Compass },
 ]
 
-const DESKTOP_ACTIONS = new Set<PanelId>(['market', 'talent', 'bank', 'investors'])
+const DESKTOP_ACTIONS = new Set<PanelId>(['market', 'talent', 'bank', 'investors', 'finance'])
 
 const TUTORIAL_STEPS: { title: string; body: string; action: string; panel: PanelId | null; icon: LucideIcon }[] = [
   {
@@ -270,7 +272,7 @@ function GameBoard({ game }: { game: GameState }) {
               onClick={() => setEndOpen(true)}
               className="glass-strong inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[11px] font-bold text-ink shadow-soft"
             >
-              <Trophy className="size-3.5 text-[#9a6b12]" />
+              <Trophy className="size-3.5 text-[#8a5f12]" />
               Run ended · view scorecard
               <ChevronRight className="size-3.5 text-ink-400" />
             </button>
@@ -490,7 +492,7 @@ function HudPill({ label, value, tone }: { label: string; value: string; tone?: 
       <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">{label}</p>
       <p
         className={clsx(
-          'text-[11.5px] font-bold leading-tight tabular-nums',
+          'figure text-[11px] font-semibold leading-tight tabular-nums',
           tone === 'good' && 'text-lime',
           tone === 'warn' && 'text-gold',
           tone === 'bad' && 'text-coral',
@@ -509,7 +511,7 @@ function HudChip({ label, value, tone }: { label: string; value: string; tone?: 
       <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-white/35">{label}</span>
       <span
         className={clsx(
-          'text-[10.5px] font-bold tabular-nums',
+          'figure text-[10px] font-semibold tabular-nums',
           tone === 'good' && 'text-lime',
           tone === 'warn' && 'text-gold',
           tone === 'bad' && 'text-coral',
@@ -547,7 +549,7 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-white/70 px-2.5 py-1.5">
           <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">Runway</p>
-          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-[#9a6b12]' : 'text-coral')}>
+          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-[#8a5f12]' : 'text-coral')}>
             {runway}
           </p>
         </div>
@@ -887,7 +889,7 @@ function MobileSummary({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-400">Cash trajectory</p>
-              <p className="mt-0.5 font-display text-[18px] font-semibold text-ink">{money(game.cash)}</p>
+              <p className="figure mt-0.5 text-[17px] font-semibold text-ink">{money(game.cash)}</p>
             </div>
             <span
               className={clsx(

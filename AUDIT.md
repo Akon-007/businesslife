@@ -86,7 +86,7 @@
 | 21 | **Accessibility** (§12.3) | `prefers-reduced-motion`, ~21 `aria-*` usages, responsive layouts, mobile dock | No keyboard-navigation audit, no focus management beyond modals, no screen-reader testing, no contrast verification, no localisation-ready text layer |
 | 22 | **Security** (§14) | Token auth, per-owner company scoping, idempotency keys, unsalted SHA-256 for passwords | Admin key defaults to `'dev-admin'` (`server.ts:280`), CORS pinned to `127.0.0.1:5173`, no rate limiting, no schema validation library, no TLS config, no tamper-resistant audit log, admin actions not logged |
 | 23 | **Data & architecture** (§13) | Clean modular backend split, typed domain model, REST-shaped API | JSON file DB rewritten wholesale on every save (`backend/store.ts`), no Postgres, no Redis/queues, no migrations, no backups, no background jobs, no environment separation, no OpenAPI docs |
-| 24 | **Visual design** (§12.1) | Coherent, well-built custom system | Deviates from spec: palette `#0a1d2e`/`#12a060`/`#c9f269` vs specified `#101827`/`#176BFF`/`#17C995`/`#F5A623`; fonts Bricolage Grotesque + Plus Jakarta Sans vs Space Grotesk + Inter |
+| 24 | **Visual design** (§12.1) | Retheme in progress (§9.9) | Palette and type now follow the spec — midnight navy `#101827`, electric blue `#176BFF`, success green `#17C995`, gold `#F5A623`; Space Grotesk display, Inter interface, JetBrains Mono for figures. Motion untouched beyond the existing reduced-motion guard; no visual QA possible in this environment |
 | 25 | **QA** (§17) | 15 QA scripts (CDP screenshots, playthroughs, mobile checks, measurement probes) | Scripts assert nothing; no unit, integration, simulation-validation, AI-eval, performance or security tests; no CI |
 | 26 | **Required deliverables** (§16.1) | Working client + backend, design system, landing page | No PRD, GDD, simulation-rules spec, scenario library, UX prototypes, or security/deployment docs in-repo (`README.md` is still the Vite template) |
 
@@ -144,7 +144,8 @@
 | 13 | Unauthorised users cannot alter balances or scores | ❌ Fail | State lives in `localStorage`; any user can edit balances/score directly |
 
 **Result: 3 pass · 6 partial · 4 fail.** *(Superseded: 5 pass · 7 partial · 1 fail after §9,
-then 7 pass · 6 partial · 0 fail after §9.6.)*
+then 7 pass · 6 partial · 0 fail after §9.6. Rows 6 and 8 now pass after §9.6/§9.8 —
+invoices and schedules move cash at the right time, and the three statements exist.)*
 
 ---
 
@@ -161,8 +162,8 @@ then 7 pass · 6 partial · 0 fail after §9.6.)*
 | 6.2 | Operations | 🟡 Inventory/stockouts/suppliers only |
 | 6.3 | Marketing | 🔴 Budget slider only |
 | 6.4 | Sales | 🟡 3-stage pipeline |
-| 6.5 | Cash & treasury | 🟡 Cash + runway + loans; no invoices/receivables/AP |
-| 6.6 | Accounting & finance | 🔴 No statements, no accrual, no budgets/variance |
+| 6.5 | Cash & treasury | ✅ Cash, runway, loans, invoices/receivables and supplier payables (§9.6, §9.8) |
+| 6.6 | Accounting & finance | 🟡 Accrual on both sides plus P&L, balance sheet and cash flow (§9.8); no budgets, variance analysis or tax |
 | 6.7 | HR & leadership | 🟡 Hire/fire/train/promote/morale |
 | 6.8 | Product development | 🔴 Product spend is a single lever; no roadmap/MVP/bugs/R&D |
 | 6.9 | Procurement & supply chain | 🟡 Supplier selection only |
@@ -300,7 +301,7 @@ plus determinism and cash-timing suites, and CI wiring.)_
 | 1 | Simulation execution moved fully server-side (replay, multiplayer prerequisite) | **implemented (server-side replay)** — the API re-executes seed + decision journal; see §9.7 |
 | 2 | Seeded PRNG, scenario versioning, snapshots | **implemented** — deterministic engine, replay restart, cohort scenario seed |
 | 3 | Real authentication (password verification, recovery, SSO) | **implemented (accounts)** — scrypt, sessions, revocation, throttling; recovery and SSO still open |
-| 4 | Invoices, receivables/payables, three financial statements | **partial** — invoice lifecycle + receivables ledger + cash timing done; payables and full statements still open |
+| 4 | Invoices, receivables/payables, three financial statements | **implemented** — invoices + receivables (§9.6), supplier bills + payables and the P&L / balance sheet / cash-flow trio (§9.8) |
 | 5 | Competency rubric, written rationale capture | **implemented** |
 | 6 | Unit/integration test framework + CI wiring for `npm run verify` | **implemented** — six verify suites + GitHub Actions |
 
@@ -333,7 +334,7 @@ matrix (spread 33–45, 0% saturation) · `verify:determinism` (24-month replay 
 - Payables, a balance sheet/cash-flow statement, and multi-currency remain out of scope for this pass.
 
 Updated MVP acceptance (§16.2): **7 pass · 6 partial · 0 fail**, superseded by §9.7
-(**8 pass · 5 partial · 0 fail**).
+(**8 pass · 5 partial · 0 fail**), then by §9.8 for the finance criteria (**9 pass · 4 partial · 0 fail**).
 
 ### 9.7 Server-side execution and replay — **implemented**
 
@@ -360,3 +361,51 @@ outcome. A determined client can invent a different history that replays consist
 plausibility bounds) — it cannot invent outcomes that the engine would not produce. Truly
 adversarial-proof execution requires the server to own the input channel too (server-issued
 decisions, no client-side state), which is the remaining step for multiplayer.
+
+
+### 9.8 Payables and the three statements — **implemented**
+
+The finance partial from §9.5 item 4 is closed: the engine now keeps a small accrual ledger.
+
+| Before | After |
+|---|---|
+| Every stock purchase hit cash the month it was bought | **45% of stock is billed on 30-day terms.** Bills are paid at the next close while cash allows; a bill that cannot be paid rolls over, is marked `overdue` and takes a one-time 2% late fee (expensed, not paid) |
+| Payables existed only as a number in the report | A `Bill` ledger (`src/game/accounting.ts`) with vendor, issue month, due month, status, paid amount and fee; `payables` is always the sum of open bills |
+| No income statement | `IncomeStatement`: revenue, COGS, gross profit, payroll, overhead, depreciation (2% of fixed assets/month), spoilage, bad debt, late fees, other income/expense, operating and net profit |
+| No balance sheet | `BalanceSheet`: cash + receivables + inventory + fixed assets = payables + debt + paid-in capital + retained earnings; **`imbalance` is exposed and asserted to be 0** |
+| No cash-flow statement | `CashFlowStatement`: operating (sales, collections, stock, bills, payroll, overhead, interest, write-offs, other) + investing (capex) + financing (funding, borrowing, repayments) = closing cash |
+| One-off cash movements were invisible | `openBranch` (capex + fixed assets), `acceptOffer` (funding), `takeLoan`/`repayDebt` (borrowing/repayment), crisis and micro-event cash, hiring bonuses and severance all post to a flow bucket, so the statements still tie |
+
+Statements are kept for 24 months and built **last** in the close, after every cash movement, so the
+cash-flow statement always ends at the cash the engine reports and the balance sheet always balances.
+
+Verification: `scripts/verify-statements.ts` (33 assertions, wired into `npm run verify`) plays twelve
+months in all four industries and checks, every month: assets = liabilities + equity; opening + operating +
+investing + financing = closing cash; every P&L line recomputes; balance-sheet cash equals engine cash;
+retained earnings accumulate. It also checks the bill lifecycle (issued → open → paid at the next close,
+unaffordable → overdue with a 2% fee), and that a loan, a repayment, branch capex and a signing bonus each
+land in the right statement and still balance.
+
+**Defects found and fixed while building this:** a deal-closing cash payment (`pipeline.cash`) and
+mid-month micro-events moved cash without a statement line, so the cash-flow statement drifted from the
+balance by exactly those amounts every month. The statement is now assembled after the micro-event pass and
+the deal cash is booked as one-off income; the imbalance is 0 across all four industries and every month.
+
+**Honest boundaries:** depreciation is a flat 2% of fixed assets a month (no useful-life modelling); no
+tax, no payroll taxes, no accruals for payroll; the balance sheet has no goodwill, intangibles or deferred
+revenue; budgets and multi-month forecasts are not built (the Finance centre has a what-if estimate, not a
+forecast engine). Statements are monthly only.
+
+### 9.9 Finance centre and the §12.1 visual language — **in progress**
+
+| Before | After |
+|---|---|
+| No place to read the books | **Finance centre** panel (`src/components/game/FinancePanel.tsx`, reachable from the city HUD and the quick actions): profit & loss, balance sheet (with a visible "does it balance" check), cash flow, invoices, bills with status, and a what-if estimator; month-by-month navigation across the last 24 closes |
+| Month report showed cash only | The report adds net profit and a supplier-bill block (billed / paid / payable / late fees) |
+| Palette and fonts drifted from the brief | `#101827` navy, `#176BFF` electric blue, `#17C995` success green, `#F5A623` gold, cool neutral paper; Space Grotesk (display), Inter (interface), JetBrains Mono for every financial figure via one `figure` utility; self-hosted variable fonts through `@fontsource-variable/*` (the manual `public/fonts` woff2 files are gone) |
+| Figures set in the display face | Cash, profit, statement lines, HUD pills and KPIs are monospaced with tabular numerals |
+
+**Honest boundary:** there is no headless browser in this environment, so no screenshot, contrast sweep
+or interaction test was run against the retheme. The claims above are about the code (tokens, fonts, the
+`figure` utility, the panel's markup and ARIA roles), not about how it looks. Motion was left alone apart
+from the existing `prefers-reduced-motion` override; `npm run lint` and `npm run build` are clean.

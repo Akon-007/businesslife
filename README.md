@@ -23,6 +23,7 @@ npm run verify:auth     # registration, sign-in, session revocation, throttling,
 npm run verify:scoring  # client score == server score across industries/strategies/months
 npm run verify:determinism  # same seed + same decisions = identical run
 npm run verify:cash     # invoices move cash when they fall due, not when the sale is booked
+npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash every month
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run build           # production build
@@ -42,6 +43,8 @@ GitHub Actions runs the same suite on every push and pull request
 | Cohorts, roster, CSV export | `backend/classroom.ts`, `routes` in `backend/server.ts` |
 | Seeded randomness (one source of truth) | `src/game/random.ts` |
 | Decision journal (`applyOp`) and replay projection | `src/game/ops.ts` |
+| Supplier bills, payables, P&L / balance sheet / cash flow | `src/game/accounting.ts` |
+| Finance centre (statements, invoices, bills, what-if) | `src/components/game/FinancePanel.tsx` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |
 | Accounts, sessions, password hashing | `backend/auth.ts` |
 | Grading rubric and rationale rules | `backend/rubric.ts` (client mirror: `src/game/rubric.ts`) |
@@ -57,6 +60,28 @@ corrected to the canonical value where it fails, and recorded in a SHA-256 hash 
 (`GET /api/companies/:id/audit`). A hand-edited browser save therefore cannot produce a forged
 balance or a forged score — it produces a `flagged` commit and a corrected figure. Scores are
 always recomputed server-side; the client's number is never trusted.
+
+### The books
+
+Revenue is booked when you sell, but only part of it reaches the bank that month. Invoices run on
+industry terms (0–45 days) and are collected when due; late payers recover about 80% and the rest is
+written off as bad debt. On the cost side, 45% of stock is bought on 30-day supplier terms, so it lands
+as a **bill** rather than a cash payment. Bills are settled at the next month close if cash allows; if
+it does not, the bill rolls over as `overdue` with a one-time 2% late fee.
+
+Every close produces three statements, kept for 24 months and readable in the **Finance centre**
+(profit & loss, balance sheet, cash flow, invoices, bills, what-if):
+
+- **Profit & loss** — revenue − COGS = gross profit, then payroll, overhead, depreciation, spoilage, bad
+  debt, late fees, other costs/income, interest → net profit.
+- **Balance sheet** — cash + receivables + inventory + fixed assets = payables + debt + paid-in capital +
+  retained earnings. The panel shows whether the sheet balances instead of hiding it.
+- **Cash flow** — operating + investing + financing = the change in cash, and it always ends at the cash
+  the engine reports.
+
+Capital structure moves post to the same ledger: opening a market capitalises fixed assets and counts as
+capex, investor money is financing, loans and repayments are borrowing/repayment, and crisis, deal and
+hiring cash are one-off operating items.
 
 ### Server-side execution
 

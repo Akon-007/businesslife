@@ -41,11 +41,11 @@ export function SectionTag({ children, dark = false }: { children: ReactNode; da
 
 export function AvatarStack({ count = 4, className }: { count?: number; className?: string }) {
   const people = [
-    { initials: 'AO', color: '#0b8550' },
-    { initials: 'ZK', color: '#7c6cf6' },
-    { initials: 'TM', color: '#2f80c7' },
-    { initials: 'LS', color: '#e05a3f' },
-    { initials: 'HN', color: '#b07a1e' },
+    { initials: 'AO', color: '#0f9c72' },
+    { initials: 'ZK', color: '#5a4be0' },
+    { initials: 'TM', color: '#176bff' },
+    { initials: 'LS', color: '#e5484d' },
+    { initials: 'HN', color: '#8a5f12' },
   ].slice(0, count)
 
   return (
@@ -121,7 +121,7 @@ export function LiveFeed({ className }: { className?: string }) {
 }
 
 export function Skyline({ className, tone = 'lime' }: { className?: string; tone?: 'lime' | 'brand' }) {
-  const color = tone === 'lime' ? '#c9f269' : '#0b8550'
+  const color = tone === 'lime' ? '#35e0a1' : '#0f9c72'
   const buildings = [
     [0, 70, 26, 60], [30, 46, 32, 84], [66, 84, 22, 46], [92, 24, 36, 106], [132, 62, 24, 68],
     [160, 38, 42, 92], [206, 78, 26, 52], [236, 10, 30, 120], [270, 54, 36, 76], [310, 70, 24, 60],
@@ -142,7 +142,7 @@ export function Skyline({ className, tone = 'lime' }: { className?: string; tone
                 width="5"
                 height="6"
                 rx="1"
-                fill={index % 5 === 0 ? '#ffc94a' : '#dff3ea'}
+                fill={index % 5 === 0 ? '#f5a623' : '#dff3ea'}
                 opacity={row % 4 === 0 ? 0.9 : 0.35}
               />
             )),

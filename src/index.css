@@ -1,80 +1,70 @@
 @import 'tailwindcss';
 
-@font-face {
-  font-family: 'Bricolage Grotesque';
-  src: url('/fonts/bricolage-grotesque.woff2') format('woff2');
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  src: url('/fonts/plus-jakarta-sans.woff2') format('woff2');
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  src: url('/fonts/plus-jakarta-sans-italic.woff2') format('woff2');
-  font-weight: 200 800;
-  font-style: italic;
-  font-display: swap;
-}
-
 @theme {
-  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --color-ink: #0a1d2e;
-  --color-ink-950: #06131f;
-  --color-ink-900: #0a1d2e;
-  --color-ink-800: #12293d;
-  --color-ink-700: #1e3a50;
-  --color-ink-600: #3b5165;
-  --color-ink-500: #5b7083;
-  --color-ink-400: #8293a1;
-  --color-ink-300: #aebbc5;
+  /* Midnight navy — primary ink */
+  --color-ink: #101827;
+  --color-ink-950: #080d16;
+  --color-ink-900: #101827;
+  --color-ink-800: #172136;
+  --color-ink-700: #1f2a44;
+  --color-ink-600: #33405c;
+  --color-ink-500: #4e5c7a;
+  --color-ink-400: #71809c;
+  --color-ink-300: #9da9be;
+  --color-ink-200: #c3cbd9;
 
-  --color-paper: #f4f6ef;
-  --color-paper-2: #fbfcf8;
-  --color-paper-3: #eef1e7;
-  --color-line: #e0e6d8;
-  --color-line-strong: #cdd6c2;
+  /* Cool neutral surfaces */
+  --color-paper: #f4f6fb;
+  --color-paper-2: #ffffff;
+  --color-paper-3: #edf1f8;
+  --color-line: #dfe5f0;
+  --color-line-strong: #c9d3e4;
 
-  --color-brand-50: #eafbf1;
-  --color-brand-100: #d2f6e1;
-  --color-brand-200: #a9ecc7;
-  --color-brand-300: #72dda6;
-  --color-brand-400: #37c483;
-  --color-brand-500: #12a060;
-  --color-brand-600: #0b8550;
-  --color-brand-700: #086b41;
-  --color-brand-800: #0a5536;
-  --color-brand-900: #09452e;
+  /* Electric blue — brand / primary action */
+  --color-brand-50: #eaf1ff;
+  --color-brand-100: #d6e4ff;
+  --color-brand-200: #aecbff;
+  --color-brand-300: #7faaFF;
+  --color-brand-400: #4c8aff;
+  --color-brand-500: #176bff;
+  --color-brand-600: #0f55d6;
+  --color-brand-700: #0c43a9;
+  --color-brand-800: #0b3885;
+  --color-brand-900: #0b2f6b;
 
-  --color-lime: #c9f269;
-  --color-lime-soft: #e9f9c4;
-  --color-gold: #ffc94a;
-  --color-gold-soft: #ffe9ae;
-  --color-sky: #cbe8f7;
-  --color-sky-deep: #8fd0ef;
-  --color-coral: #ff6f61;
-  --color-coral-soft: #ffe0dc;
-  --color-violet: #7c6cf6;
-  --color-violet-soft: #e8e4ff;
+  /* Success green */
+  --color-success: #17c995;
+  --color-success-strong: #0f9c72;
+  --color-success-soft: #d6f7ec;
 
-  --shadow-soft: 0 1px 2px rgb(10 29 46 / 0.04), 0 12px 32px -12px rgb(10 29 46 / 0.18);
-  --shadow-float: 0 2px 4px rgb(10 29 46 / 0.05), 0 28px 60px -24px rgb(10 29 46 / 0.35);
-  --shadow-pin: 0 6px 18px -6px rgb(7 23 37 / 0.4), 0 2px 6px rgb(7 23 37 / 0.15);
+  /* Gold — warnings, milestones, cash milestones */
+  --color-gold: #f5a623;
+  --color-gold-soft: #fdf0d6;
 
-  --radius-xl2: 1.25rem;
-  --radius-xl3: 1.5rem;
-  --radius-xl4: 2rem;
-  --radius-xl5: 2.5rem;
+  /* Supporting accents */
+  --color-sky: #dbe9ff;
+  --color-sky-deep: #9cc4ff;
+  --color-lime: #35e0a1;
+  --color-lime-soft: #d6f7ec;
+  --color-coral: #e5484d;
+  --color-coral-soft: #fde4e6;
+  --color-violet: #5a4be0;
+  --color-violet-soft: #e7e4fb;
+
+  --shadow-soft: 0 1px 2px rgb(16 24 39 / 0.05), 0 12px 32px -14px rgb(16 24 39 / 0.18);
+  --shadow-float: 0 2px 4px rgb(16 24 39 / 0.06), 0 28px 60px -26px rgb(16 24 39 / 0.32);
+  --shadow-pin: 0 6px 18px -6px rgb(8 13 22 / 0.42), 0 2px 6px rgb(8 13 22 / 0.16);
+
+  --radius-xl2: 1rem;
+  --radius-xl3: 1.25rem;
+  --radius-xl4: 1.5rem;
+  --radius-xl5: 2rem;
 }
+
 
 @layer base {
   * {
@@ -98,8 +88,8 @@
   }
 
   ::selection {
-    background: var(--color-lime);
-    color: var(--color-ink);
+    background: var(--color-brand-200);
+    color: var(--color-ink-950);
   }
 
   h1,
@@ -120,7 +110,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid var(--color-brand-400);
+    outline: 3px solid var(--color-brand-500);
     outline-offset: 3px;
     border-radius: 6px;
   }
@@ -176,6 +166,14 @@
   box-shadow: var(--shadow-soft);
 }
 
+/* Financial figures: monospaced, tabular, slightly tightened. */
+@utility figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' on, 'zero' on;
+  letter-spacing: -0.01em;
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
 
@@ -185,7 +183,7 @@
 }
 
 @utility text-gradient-brand {
-  background: linear-gradient(100deg, var(--color-ink) 15%, var(--color-brand-600) 60%, var(--color-brand-500) 90%);
+  background: linear-gradient(100deg, var(--color-ink) 15%, var(--color-brand-600) 62%, var(--color-brand-400) 92%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -325,7 +323,7 @@
 }
 
 @utility skeleton-shimmer {
-  background: linear-gradient(90deg, #eef1e7 25%, #f8faf4 50%, #eef1e7 75%);
+  background: linear-gradient(90deg, #edf1f8 25%, #f8faff 50%, #edf1f8 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }

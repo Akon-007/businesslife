@@ -47,10 +47,10 @@ export function Stat({
       <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-400">{label}</p>
       <p
         className={clsx(
-          'mt-1 font-display text-[17px] font-semibold leading-none tabular-nums',
+          'figure mt-1 text-[16px] font-semibold leading-none tabular-nums',
           tone === 'good' && 'text-brand-700',
           tone === 'bad' && 'text-coral',
-          tone === 'warn' && 'text-[#9a6b12]',
+          tone === 'warn' && 'text-gold',
           tone === 'neutral' && 'text-ink',
         )}
       >
@@ -85,13 +85,13 @@ export function RangeRow({
   disabled?: boolean
 }) {
   const fill = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
-  const color = accent === 'coral' ? '#e05a3f' : accent === 'violet' ? '#7c6cf6' : '#0b8550'
+  const color = accent === 'coral' ? '#e5484d' : accent === 'violet' ? '#5a4be0' : '#176bff'
 
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <label className="text-[11.5px] font-semibold text-ink-600">{label}</label>
-        <span className="font-display text-[15px] font-semibold tabular-nums text-ink">{format(value)}</span>
+        <span className="figure text-[14px] font-semibold tabular-nums text-ink">{format(value)}</span>
       </div>
       <div className="relative mt-2">
         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-line">
@@ -129,12 +129,12 @@ export function Meter({
   suffix?: string
   tone?: 'brand' | 'gold' | 'coral' | 'violet'
 }) {
-  const color = tone === 'gold' ? '#e3a41c' : tone === 'coral' ? '#e05a3f' : tone === 'violet' ? '#7c6cf6' : '#12a060'
+  const color = tone === 'gold' ? '#f5a623' : tone === 'coral' ? '#e5484d' : tone === 'violet' ? '#5a4be0' : '#17c995'
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 text-[11px]">
         <span className="font-semibold text-ink-600">{label}</span>
-        <span className="font-bold tabular-nums text-ink">
+        <span className="figure text-[11px] font-semibold tabular-nums text-ink">
           {Math.round(value)}
           {suffix}
         </span>

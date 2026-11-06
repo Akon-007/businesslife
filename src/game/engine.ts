@@ -18,7 +18,9 @@ import {
   strategyById,
 } from './data'
 import { ALL_LEVELS } from './progression'
+import { BILL_SHARE, VENDORS, billDueMonth, buildStatements, openPayables, settleBills } from './accounting'
 import type {
+  Bill,
   Candidate,
   CrisisDef,
   CrisisState,
@@ -26,6 +28,7 @@ import type {
   DifficultyId,
   Effects,
   Employee,
+  FlowBucket,
   FounderBackgroundId,
   GameMetrics,
   GameState,
@@ -220,6 +223,8 @@ export function startGame(input: {
   const bootstrap = rngFor(seed, 'bootstrap')
   const economyOffset = Math.floor(randWith(bootstrap, 0, 7))
   const suppliers = makeSuppliers(input.industry)
+  const startingCustomers =
+    industry.startingCustomers + strategy.starting.customers + background.starting.customers
 
   const base: GameState = {
     version: SAVE_VERSION,
@@ -262,6 +267,16 @@ export function startGame(input: {
     pendingCrisis: null,
     invoices: [],
     receivables: 0,
+    bills: [],
+    payables: 0,
+    inventoryValue: industry.inventory
+      ? Math.round(1.6 * startingCustomers * industry.costPerCustomer)
+      : 0,
+    fixedAssets: 0,
+    paidInCapital: startingCash + (industry.inventory ? Math.round(1.6 * startingCustomers * industry.costPerCustomer) : 0),
+    retainedEarnings: 0,
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    statements: [],
     seenCrises: [],
     log: [],
     history: [],
@@ -510,9 +525,22 @@ export function authorityPayload(state: GameState) {
   }
 }
 
+/**
+ * Record a one-off cash movement that happens between month closes, so the
+ * cash-flow statement and the balance sheet still tie out.
+ */
+function recordFlow(state: GameState, key: keyof FlowBucket, amount: number): FlowBucket {
+  const flows = state.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 }
+  if (!Number.isFinite(amount) || amount === 0) return flows
+  return { ...flows, [key]: (flows[key] ?? 0) + amount }
+}
+
 export function applyEffects(state: GameState, effects: Effects): GameState {
   let next = { ...state }
-  if (effects.cash) next.cash += effects.cash
+  if (effects.cash) {
+    next.cash += effects.cash
+    next.flows = recordFlow(next, effects.cash < 0 ? 'expenses' : 'otherIncome', Math.abs(effects.cash))
+  }
   if (effects.customersPct) next.customers = Math.max(0, Math.round(next.customers * (1 + effects.customersPct)))
   if (effects.customersAdd) next.customers = Math.max(0, next.customers + effects.customersAdd)
   if (effects.quality) next.quality = clamp(next.quality + effects.quality, 0, 100)
@@ -827,7 +855,39 @@ export function advanceMonth(state: GameState): GameState {
     : []
   const invoices = [...settlement.invoices, ...newInvoices].slice(-36)
   const receivables = openReceivables(invoices)
-  let cash = state.cash + cashSales + settlement.collected - costs + pipeline.cash
+
+  // Stock is bought on supplier credit: the cost is expensed as it is used, but
+  // cash leaves when the bill falls due. `billed` is the payable for this month.
+  const inventoryValue = industry.inventory ? Math.max(0, Math.round(inventory * cogs)) : 0
+  const inventoryDelta = inventoryValue - (state.inventoryValue ?? 0)
+  const stockPurchases = Math.max(0, cogs + inventoryDelta)
+  const billed = Math.round(stockPurchases * BILL_SHARE)
+  const cashForStock = stockPurchases - billed
+
+  const cashBeforeBills =
+    state.cash + cashSales + settlement.collected - (payrollBefore + overhead + interest + cashForStock + spoilage) + pipeline.cash
+  const billSettlement = settleBills(state.bills ?? [], month, Math.max(0, cashBeforeBills))
+  const newBills: Bill[] = billed > 0
+    ? [{
+        id: `bill-${month + 1}`,
+        issuedMonth: month,
+        dueMonth: billDueMonth(month),
+        amount: billed,
+        vendor: pickWith(rngFor(state.seed ?? 0, 'vendor', month), VENDORS),
+        status: 'open' as const,
+        paidMonth: null,
+        paid: 0,
+        lateFee: 0,
+      }]
+    : []
+  const bills = [...billSettlement.bills, ...newBills].slice(-36)
+  const payables = openPayables(bills)
+  let cash = cashBeforeBills - billSettlement.paid
+
+  const depreciation = Math.round((state.fixedAssets ?? 0) * 0.02)
+  const fixedAssets = Math.max(0, (state.fixedAssets ?? 0) - depreciation)
+  const lateFees = billSettlement.lateFees
+  const badDebt = settlement.writtenOff
 
   const moraleTarget =
     74 -
@@ -892,6 +952,10 @@ export function advanceMonth(state: GameState): GameState {
     pipeline: pipeline.pipeline,
     invoices,
     receivables,
+    bills,
+    payables,
+    inventoryValue,
+    fixedAssets,
     pipelineWon: (state.pipelineWon ?? 0) + pipeline.won,
     competitors: moveCompetitors({ ...state, quality, price: state.price }),
   }
@@ -919,10 +983,12 @@ export function advanceMonth(state: GameState): GameState {
     headline = 'You ran out of stock and turned demand away.'
   }
 
+  let emergencyBorrow = 0
   if (cash < 0) {
     const shortfall = Math.abs(cash)
     const needed = Math.ceil((shortfall + 6_000) / 1_000) * 1_000
     cash += needed
+    emergencyBorrow = needed
     next = {
       ...next,
       cash,
@@ -961,6 +1027,68 @@ export function advanceMonth(state: GameState): GameState {
   if (openBranches(next).length > 0) next = unlock(next, 'second_market')
   if (profitable && economy.phase === 'recession') next = unlock(next, 'weatherproof')
   if (promoted) next = unlock(next, 'promoted')
+
+  // --- statements ---------------------------------------------------------
+  // Built last so every cash movement in this close (including micro-events)
+  // is reflected, and the ledger ties out against the final cash balance.
+  const openingCash = state.history.length ? state.history[state.history.length - 1].cash : (state.startingCash ?? state.cash)
+  const flows = {
+    capex: next.flows?.capex ?? 0,
+    funding: next.flows?.funding ?? 0,
+    borrow: (next.flows?.borrow ?? 0) + emergencyBorrow,
+    repay: next.flows?.repay ?? 0,
+    expenses: next.flows?.expenses ?? 0,
+    otherIncome: (next.flows?.otherIncome ?? 0) + pipeline.cash,
+  }
+  const emergencyFee = Math.round(emergencyBorrow * 0.12)
+  const netProfit =
+    revenue - cogs - payrollBefore - overhead - depreciation - spoilage - badDebt - lateFees -
+    interest - emergencyFee + flows.otherIncome - flows.expenses
+  const paidInCapital = (state.paidInCapital ?? 0) + flows.funding
+  const retainedEarnings = (state.retainedEarnings ?? 0) + netProfit
+  const statement = buildStatements({
+    month,
+    openingCash,
+    closingCash: next.cash,
+    revenue,
+    cogs,
+    payroll: payrollBefore,
+    overhead,
+    marketing: state.marketingSpend ?? 0,
+    product: state.productSpend ?? 0,
+    training: trainingBudget,
+    depreciation,
+    interest: interest + emergencyFee,
+    interestPaid: interest,
+    spoilage,
+    badDebt,
+    lateFees,
+    otherExpenses: flows.expenses,
+    otherIncome: flows.otherIncome,
+    cashSales,
+    collections: settlement.collected,
+    stockPaid: cashForStock,
+    billsPaid: billSettlement.paid,
+    cashSpoilage: spoilage,
+    state: next,
+    inventoryValue,
+    fixedAssets,
+    receivables,
+    payables,
+    paidInCapital,
+    retainedEarnings,
+    capex: flows.capex,
+    funding: flows.funding,
+    borrow: flows.borrow,
+    repay: flows.repay,
+  })
+  next = {
+    ...next,
+    paidInCapital,
+    retainedEarnings,
+    statements: [...(state.statements ?? []), statement].slice(-24),
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+  }
 
   const insights = buildInsights(next)
 
@@ -1069,6 +1197,13 @@ export function advanceMonth(state: GameState): GameState {
     collected: cashSales + settlement.collected,
     receivables: next.receivables,
     overdue: invoices.filter((invoice) => invoice.status === 'overdue').length,
+    billed,
+    billsPaid: billSettlement.paid,
+    payables,
+    lateFees,
+    depreciation,
+    badDebt,
+    netProfit: statement.income.netProfit,
   }
 
   next = { ...next, lastReport: report }
@@ -1149,6 +1284,7 @@ export function hireCandidate(state: GameState, candidateId: string): GameState 
   let next: GameState = {
     ...state,
     cash: state.cash - candidate.signingBonus,
+    flows: recordFlow(state, 'expenses', candidate.signingBonus),
     team: [...state.team, makeEmployee(candidate, state.month)],
     candidates: state.candidates.filter((item) => item.id !== candidateId),
     morale: clamp(state.morale + 1, 0, 100),
@@ -1170,6 +1306,7 @@ export function fireEmployee(state: GameState, employeeId: string): GameState {
   let next: GameState = {
     ...state,
     cash: state.cash - member.salary,
+    flows: recordFlow(state, 'expenses', member.salary),
     team: state.team.filter((item) => item.id !== employeeId),
     morale: clamp(state.morale - 6, 0, 100),
     reputation: clamp(state.reputation - 1, 0, 100),
@@ -1188,6 +1325,7 @@ export function refreshCandidates(state: GameState): GameState {
   return {
     ...state,
     cash: state.cash - 500,
+    flows: recordFlow(state, 'expenses', 500),
     candidates: makeCandidatePool(rngFor(state.seed ?? 0, 'pool-refresh', state.month, Math.round(state.cash))),
   }
 }
@@ -1230,6 +1368,7 @@ export function acceptOffer(state: GameState, offerId: string): GameState {
   const next: GameState = {
     ...state,
     cash: state.cash + offer.amount,
+    flows: recordFlow(state, 'funding', offer.amount),
     founderEquity: Math.round(state.founderEquity * (1 - offer.equity) * 10) / 10,
     valuation: offer.valuation + offer.amount,
     totalRaised: state.totalRaised + offer.amount,
@@ -1259,6 +1398,7 @@ export function takeLoan(state: GameState, amount: number): GameState {
     ...state,
     cash: state.cash + loan,
     debt: state.debt + loan,
+    flows: recordFlow(state, 'borrow', loan),
   }
   next = { ...next, valuation: computeValuation(next) }
   return addLog(next, {
@@ -1277,6 +1417,7 @@ export function repayDebt(state: GameState, amount: number): GameState {
     ...state,
     cash: state.cash - repayment,
     debt: state.debt - repayment,
+    flows: recordFlow(state, 'repay', repayment),
   }
   next = { ...next, valuation: computeValuation(next) }
   return addLog(next, {
@@ -1344,6 +1485,7 @@ export function pushDeal(state: GameState, dealId: string): GameState {
     {
       ...state,
       cash: state.cash - 1_200,
+      flows: recordFlow(state, 'expenses', 1_200),
       pipeline: state.pipeline.map((item) =>
         item.id === dealId ? { ...item, chance: clamp(item.chance + 0.16, 0.08, 0.92), pushed: true } : item,
       ),
@@ -1366,6 +1508,8 @@ export function openBranch(state: GameState, branchId: string): GameState {
   const next: GameState = {
     ...state,
     cash: state.cash - branch.launchCost,
+    fixedAssets: (state.fixedAssets ?? 0) + branch.launchCost,
+    flows: recordFlow(state, 'capex', branch.launchCost),
     branches: state.branches.map((item) =>
       item.id === branchId ? { ...item, openedMonth: state.month } : item,
     ),
@@ -1489,6 +1633,14 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     startingCash: game.startingCash ?? game.cash ?? 0,
     invoices: game.invoices ?? [],
     receivables: game.receivables ?? 0,
+    bills: game.bills ?? [],
+    payables: game.payables ?? 0,
+    inventoryValue: game.inventoryValue ?? 0,
+    fixedAssets: game.fixedAssets ?? 0,
+    paidInCapital: game.paidInCapital ?? game.cash ?? 0,
+    retainedEarnings: game.retainedEarnings ?? 0,
+    flows: game.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    statements: game.statements ?? [],
     authority: game.authority ?? undefined,
     beginner: migratedProgress,
     day: game.day ?? ((game.month ?? 0) * DAYS_PER_MONTH + 1),

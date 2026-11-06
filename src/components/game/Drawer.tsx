@@ -20,6 +20,7 @@ import {
   MapPin,
   Megaphone,
   Palette,
+  Receipt,
   RefreshCcw,
   ShieldAlert,
   Store,
@@ -57,6 +58,7 @@ import { IN_GAME_APPS } from '../../game/apps'
 import { money, monthLabel, number, percent } from '../../lib/format'
 import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
+import { FinancePanel } from './FinancePanel'
 
 export type PanelId =
   | 'company'
@@ -71,6 +73,7 @@ export type PanelId =
   | 'expansion'
   | 'journey'
   | 'apps'
+  | 'finance'
 
 export const PANEL_META: Record<PanelId, { title: string; kicker: string; description: string; icon: LucideIcon; color: string }> = {
   company: {
@@ -78,84 +81,91 @@ export const PANEL_META: Record<PanelId, { title: string; kicker: string; descri
     kicker: 'Company',
     description: 'The whole story: cash, valuation, plan and every decision you have made.',
     icon: Building2,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   market: {
     title: 'Market Plaza',
     kicker: 'Customers',
     description: 'Set price and budgets, then watch the demand and churn forecast move.',
     icon: Store,
-    color: '#e05a3f',
+    color: '#e5484d',
   },
   talent: {
     title: 'Talent Hub',
     kicker: 'Team',
     description: 'Every hire buys capacity and costs runway. Choose carefully.',
     icon: Users,
-    color: '#7c6cf6',
+    color: '#5a4be0',
   },
   bank: {
     title: 'Meridian Bank',
     kicker: 'Credit',
     description: 'Borrow against the business, or repay debt and buy back your freedom.',
     icon: Landmark,
-    color: '#b07a1e',
+    color: '#f5a623',
   },
   investors: {
     title: 'Investor Row',
     kicker: 'Funding',
     description: 'Open a round, read the term sheets and decide how much equity to sell.',
     icon: Handshake,
-    color: '#2f80c7',
+    color: '#176bff',
   },
   crisis: {
     title: 'Crisis Ops',
     kicker: 'Risk',
     description: 'The crises you survived, and the ones still waiting for an answer.',
     icon: ShieldAlert,
-    color: '#e05a3f',
+    color: '#e5484d',
   },
   nova: {
     title: 'Nova',
     kicker: 'Advisor',
     description: 'A coaching layer over your numbers. Plain English, no financial advice.',
     icon: Compass,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   suppliers: {
     title: 'Supply Depot',
     kicker: 'Operations',
     description: 'Choose who you buy from, how much cover to hold, and what a stockout costs.',
     icon: Boxes,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   sales: {
     title: 'Sales Office',
     kicker: 'Pipeline',
     description: 'Leads become qualified, then negotiated. Push the deals worth closing.',
     icon: Target,
-    color: '#2f80c7',
+    color: '#176bff',
   },
   expansion: {
     title: 'Expansion District',
     kicker: 'Growth',
     description: 'Open a second market. Capex and overhead today, demand tomorrow.',
     icon: MapPin,
-    color: '#c4811a',
+    color: '#f5a623',
   },
   journey: {
     title: 'Beginner journey',
     kicker: 'Stage 01 · 15 levels',
     description: 'A playable path from business idea to first sales and break-even.',
     icon: ListChecks,
-    color: '#0b8550',
+    color: '#0f9c72',
+  },
+  finance: {
+    title: 'Finance centre',
+    kicker: 'Ledger',
+    description: 'Profit & loss, balance sheet, cash flow, invoices, bills and a what-if check.',
+    icon: Receipt,
+    color: '#176bff',
   },
   apps: {
     title: 'Phone apps',
     kicker: 'Meridian City ecosystem',
     description: 'The services, businesses and networks that make the city feel alive.',
     icon: Smartphone,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
 }
 
@@ -247,6 +257,7 @@ export function Drawer({
               {panel === 'expansion' && <ExpansionPanel onNavigate={onNavigate} />}
               {panel === 'journey' && <JourneyPanel />}
               {panel === 'apps' && <AppsPanel onNavigate={onNavigate} />}
+              {panel === 'finance' && <FinancePanel />}
             </div>
           </motion.aside>
         </div>
@@ -303,7 +314,7 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
           ))}
         </div>
         <div className="mt-3 h-10">
-          <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#c9f269" height={40} />
+          <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#35e0a1" height={40} />
         </div>
         <div className="mt-1 flex items-center justify-between text-[9.5px] text-white/40">
           <span>Cash since day 1</span>
@@ -585,7 +596,7 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
           onClick={() => onNavigate('expansion')}
           className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2.5 text-left transition hover:border-line-strong"
         >
-          <MapPin className="size-4 shrink-0 text-[#9a6b12]" />
+          <MapPin className="size-4 shrink-0 text-[#8a5f12]" />
           <span className="min-w-0">
             <span className="block text-[11px] font-bold text-ink">Expansion</span>
             <span className="block text-[9.5px] text-ink-400">{game.branches.filter((branch) => branch.openedMonth !== null).length} markets open</span>
@@ -616,7 +627,7 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
   )
 }
 
-const AVATAR_COLORS = ['#0b8550', '#7c6cf6', '#2f80c7', '#b07a1e', '#e05a3f']
+const AVATAR_COLORS = ['#0f9c72', '#5a4be0', '#176bff', '#f5a623', '#e5484d']
 
 function initials(name: string) {
   return name
@@ -750,7 +761,7 @@ function TalentPanel() {
       </PanelSection>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <Coins className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+        <Coins className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           Payroll is your largest fixed cost. A ₦6,000 salary is <b>{money(72_000)}</b> a year — against your current
           burn, that is real runway.
@@ -1297,7 +1308,7 @@ function SupplierPanel() {
 const STAGE_META: Record<string, { label: string; tone: string }> = {
   lead: { label: 'Lead', tone: 'bg-paper-3 text-ink-500' },
   qualified: { label: 'Qualified', tone: 'bg-violet-soft text-violet' },
-  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-[#9a6b12]' },
+  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-[#8a5f12]' },
 }
 
 function SalesPanel() {
@@ -1355,7 +1366,7 @@ function SalesPanel() {
                         onClick={() => toggleDiscount(deal.id)}
                         className={clsx(
                           'rounded-full px-2 py-1 text-[9.5px] font-bold transition',
-                          deal.discount ? 'bg-gold-soft text-[#9a6b12]' : 'bg-paper-3 text-ink-500 hover:text-ink',
+                          deal.discount ? 'bg-gold-soft text-[#8a5f12]' : 'bg-paper-3 text-ink-500 hover:text-ink',
                         )}
                       >
                         {deal.discount ? '10% discount on' : 'Offer 10% discount'}
@@ -1478,7 +1489,7 @@ function ExpansionPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }
       </div>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <MapPin className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+        <MapPin className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           A second market only works when the first one no longer needs your attention. {industry.name} branches add
           demand every month and overhead whether customers arrive or not.
