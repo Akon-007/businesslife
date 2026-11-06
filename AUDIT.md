@@ -592,3 +592,55 @@ without an order id (both covered by `verify:api`).
 cancellation, capacity maths, defect scaling, the close-level consequences of overload, capex accounting,
 journal replay, op validation) · `verify:render` +4 per industry (operations panel, overload copy, no leaked
 values) · `verify:api` +3 live checks · statements, determinism, replay and legit-play all green.
+
+
+### 9.16 Six-competency rubric and PDF exports — **implemented**
+
+**Rubric (§11.2).** Grading used four criteria at 30/30/20/20; the scope specifies six competencies weighted
+25 / 20 / 15 / 15 / 15 / 10. The rubric is now:
+
+| Competency | Weight | What it asks |
+|---|---|---|
+| Financial acumen | 25 | Protected cash, collected receivables, kept margins, funded growth deliberately |
+| Strategy & priorities | 20 | A coherent position: price, product and customers pulling one way |
+| Operational execution | 15 | Supply, capacity and quality held together under growth |
+| Market & customer | 15 | Demand created and retained — funnel, pricing, churn |
+| Leadership & team | 15 | Hired deliberately, kept morale, survived crises |
+| Ethics & governance | 10 | Honest claims, defensible trade-offs, fair treatment |
+
+Levels stay 1–4 (25/50/75/100 points), the grade is the weighted mean, and a written rationale of ≥40
+characters is still required. Two compatibility decisions: **legacy four-criterion grades are still accepted**
+(cash→finance, customers→market, operations→operations, judgement→strategy; leadership and integrity default
+to Proficient, so four Exemplarys score 94) and the **CSV export carries the six new columns**. The client
+mirror in `src/game/rubric.ts` is now checked against `backend/rubric.ts` by `verify:pdf`, so the two lists
+cannot drift.
+
+`suggestRubric(state)` produces a starting position from the run's own evidence (margin, runway, capacity,
+retention, morale, balance-sheet integrity) with a one-line justification per competency. It is labelled as a
+suggestion on the scorecard — the instructor's score replaces it.
+
+**Exports (§11.3).** `src/lib/pdf.ts` is a ~230-line PDF writer (catalog, page tree, Helvetica, real xref
+offsets, Latin-1 with transliteration for ₦ → "NGN" and · → "-"). Pulling a PDF library in for two documents
+would have added a dependency and a bundle for arithmetic; the output is verified by parsing it with `pypdf`
+during development and by structural checks in CI.
+
+Two documents:
+- **Month report** — revenue, cash, net profit, customers, margin, collections; P&L; cash and working capital;
+  operations (capacity, unserved demand, orders in transit, retainer revenue); marketing with CAC/LTV; the
+  month's drivers; the "education, not financial advice" line.
+- **Run scorecard** — engine score and grade, valuation, cash, the six competencies with weighted points and
+  the evidence behind each, reputation/quality/morale/debt, founder equity, the last published statements with
+  the balance check, and — when the page is generated after a server commit — the server authority score and
+  the difference from the engine score.
+
+Both are wired into the UI: **Download PDF** in the month report, **Scorecard PDF** on the run-end screen —
+the scorecard prints the server authority score from `game.authority` whenever the run has been committed.
+Export is client-side by design: the documents are rendered from state the browser already holds, so an
+offline run still exports. The server's contribution is the grade on the scorecard, which comes from
+`GET /api/companies/:id/run` (authority score) — the rubric definition itself comes from `GET /api/rubric`.
+
+**Verification.** New suite `verify:pdf` (32 checks): the file parses (`%PDF-1.4`, trailer, every xref offset
+pointing at its own object), the figures on the page are the figures in the run, no ₦ glyph leaks, escaping of
+`( ) \` is correct, filenames cannot escape the download directory, the client and server rubric lists match, and
+the six weights sum to 100 with the boundary grades (25/75/100). `verify:api` now asserts six criteria from
+`/api/rubric`, the 25/20/15/15/15/10 weights, a six-entry breakdown, legacy acceptance and the six CSV columns.

@@ -26,6 +26,7 @@ npm run verify:cash     # invoices move cash when they fall due, not when the sa
 npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash every month
 npm run verify:contrast # the design tokens clear WCAG AA for the text pairs the UI uses
 npm run verify:wiring   # every path the client calls exists on the server
+npm run verify:pdf      # the exported documents parse, and the rubric mirrors the server
 npm run verify:render  # the finance UI server-renders from a real game state with correct figures
 npm run verify:centres # payment runs, marketing mix, attribution and unit economics + journal replay
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
@@ -50,6 +51,7 @@ GitHub Actions runs the same suite on every push and pull request
 | Supplier bills, payables, P&L / balance sheet / cash flow | `src/game/accounting.ts` |
 | Finance centre (statements, invoices, bills, what-if) | `src/components/game/FinancePanel.tsx` |
 | Marketing channels, attribution, CAC/LTV | `src/game/marketing.ts`, `src/components/game/MarketingPanel.tsx` |
+| Six-competency rubric, PDF month report and scorecard | `src/game/rubric.ts`, `src/game/report-pdf.ts`, `src/lib/pdf.ts` |
 | Operations: purchase orders, lead times, capacity, returns | `src/game/supply.ts`, `src/components/game/OperationsPanel.tsx` |
 | Sales funnel: leads, qualification, quotes, retainers | `src/game/sales.ts`, `src/components/game/SalesFunnel.tsx` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |

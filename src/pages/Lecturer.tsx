@@ -33,7 +33,7 @@ import {
   type RosterEntry,
 } from '../lib/api'
 import { money, number } from '../lib/format'
-import { DEFAULT_RUBRIC, MIN_RATIONALE, RUBRIC, RUBRIC_LEVELS, localGrade, type RubricScores } from '../game/rubric'
+import { DEFAULT_RUBRIC, MIN_RATIONALE, RUBRIC, RUBRIC_LEVELS, localGrade, type RubricId, type RubricScores } from '../game/rubric'
 
 const INDUSTRIES = [
   { id: 'saas', label: 'Technology / SaaS' },
@@ -681,7 +681,7 @@ function RosterCard({
                               <select
                                 value={rubric[criterion.id]}
                                 onChange={(event) =>
-                                  setRubric((current) => ({ ...current, [criterion.id]: Number(event.target.value) as RubricScores['cash'] }))
+                                  setRubric((current) => ({ ...current, [criterion.id]: Number(event.target.value) as RubricScores[RubricId] }))
                                 }
                                 aria-label={`${criterion.label} level for ${entry.name}`}
                                 className={clsx(inputClass, 'mt-0.5 h-8 text-[11px]')}
