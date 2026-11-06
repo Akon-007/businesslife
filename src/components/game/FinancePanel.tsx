@@ -115,15 +115,18 @@ function MonthPicker({ month, onChange, max }: { month: number; onChange: (next:
   )
 }
 
-export function FinancePanel() {
-  const game = useGame((state) => state.game) as GameState
-  const statements = game.statements ?? []
-  const latest = statements[statements.length - 1]
-  const [tab, setTab] = useState<TabId>('pl')
+export function FinancePanel({ game: injected, initialTab = 'pl' }: { game?: GameState; initialTab?: TabId } = {}) {
+  const stored = useGame((state) => state.game) as GameState | null
+  const [tab, setTab] = useState<TabId>(initialTab)
   const [pickedMonth, setPickedMonth] = useState<number | null>(null)
 
-  const shownMonth = pickedMonth ?? latest?.month ?? game.month
+  const game = injected ?? stored
+  const statements = game?.statements ?? []
+  const latest = statements[statements.length - 1]
+  const shownMonth = pickedMonth ?? latest?.month ?? game?.month ?? 1
   const statement: Statements | undefined = statements.find((item) => item.month === shownMonth) ?? latest
+
+  if (!game) return null
 
   const bills = game.bills ?? []
   const invoices = game.invoices ?? []

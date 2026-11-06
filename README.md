@@ -25,6 +25,7 @@ npm run verify:determinism  # same seed + same decisions = identical run
 npm run verify:cash     # invoices move cash when they fall due, not when the sale is booked
 npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash every month
 npm run verify:contrast # the design tokens clear WCAG AA for the text pairs the UI uses
+npm run verify:render  # the finance UI server-renders from a real game state with correct figures
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run build           # production build

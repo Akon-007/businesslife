@@ -433,3 +433,16 @@ Motion was left alone apart from the existing `prefers-reduced-motion` override;
 **Honest boundary:** this is a code-level pass. There is no axe/Lighthouse run, no screen-reader session
 and no keyboard walkthrough in a real browser here — the environment has no headless browser. Automated
 contrast is checked; automated a11y is not.
+
+### 9.11 Render smoke test — **implemented**
+
+`scripts/verify-render.tsx` (wired into `npm run verify`) plays six months on a real seeded engine, feeds the
+state straight into `FinancePanel` and server-renders it to static markup. It asserts, per industry: the panel
+renders; every one of the eight tabs renders clean (no `NaN`, `undefined` or `[object Object]`); the cash on
+screen is the engine's cash; net profit matches the statement; the balance sheet's check sentence and figures
+match the ledger; and the month report model carries net profit and the bill fields.
+
+This closes the honesty gap left by "no visual QA" as far as it can be closed without a browser: the panel is
+known to render from real state with correct numbers. It still says nothing about layout, colour, hover states
+or interaction. `FinancePanel` gained `game` and `initialTab` props to make that possible; the game passes
+neither.
