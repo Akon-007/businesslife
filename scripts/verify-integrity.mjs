@@ -62,6 +62,19 @@ async function main() {
   const companyId = created.body?.id
   check('company created', created.status === 201 && Boolean(companyId), `status ${created.status}`)
 
+  const funnelDecision = await call(`/api/companies/${companyId}/sales/funnel`, {
+    method: 'POST',
+    token: learner.token,
+    body: { leadId: 'lead-audit-1', action: 'quote', value: 4800000, discount: 0.1 },
+  })
+  check('a funnel decision is recorded on the company', funnelDecision.status === 200, `status ${funnelDecision.status}`)
+  const funnelMissingId = await call(`/api/companies/${companyId}/sales/funnel`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'quote' },
+  })
+  check('a funnel decision without a lead id is rejected', funnelMissingId.status === 400, `status ${funnelMissingId.status}`)
+
   const initialRun = await call(`/api/companies/${companyId}/run`, { token: learner.token })
   check('run state readable', initialRun.status === 200)
   check('initial score is server-derived zero', initialRun.body?.score === 0, String(initialRun.body?.score))

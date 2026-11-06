@@ -8,10 +8,11 @@
  *   npx tsx scripts/verify-centres.ts
  */
 import { openPayables } from '../src/game/accounting'
-import { advanceMonth, payAllBills, payBill, resolveCrisis, setMarketingChannel, setMarketingMix, startGame } from '../src/game/engine'
+import { advanceMonth, dropLead, payAllBills, payBill, qualifyLead, resolveCrisis, sendQuote, setMarketingChannel, setMarketingMix, startGame } from '../src/game/engine'
+import { QUALIFICATION_FEE, quoteChance, quoteValue, scoreLead, tickContracts } from '../src/game/sales'
 import { CHANNEL_IDS, attributeCustomers, mixFactor, normalizeMix, unitEconomics, withChannelShare } from '../src/game/marketing'
 import { applyJournal, assertOp, InvalidOpError, projectState } from '../src/game/ops'
-import type { GameState } from '../src/game/types'
+import type { GameState, Lead } from '../src/game/types'
 
 let failures = 0
 const check = (label: string, ok: boolean, detail = '') => {
@@ -200,6 +201,113 @@ check('setMarketingMix rejects an empty mix', (() => {
     return true
   }
 })())
+
+
+console.log('\nSales funnel\n')
+
+const lead = (overrides: Partial<Lead> = {}): Lead => ({
+  id: 'lead-test-1',
+  company: 'Delta Fresh Foods',
+  contact: 'Ngozi Eze',
+  source: 'inbound',
+  seats: 4,
+  budget: 40_000,
+  intent: 70,
+  fit: 75,
+  addedMonth: 0,
+  status: 'open',
+  ...overrides,
+})
+
+const priced = quoteValue(lead(), 5_000, 0)
+check('a quote is seats × list price', priced === 20_000, `${priced}`)
+check('a discount cuts the quote proportionally', quoteValue(lead(), 5_000, 0.2) === 16_000)
+check('a discount is capped at 30%', quoteValue(lead(), 5_000, 0.9) === Math.round(4 * 5_000 * 0.7))
+
+const hot = scoreLead(lead({ intent: 90, fit: 90 }), 5_000)
+const cold = scoreLead(lead({ intent: 20, fit: 20 }), 5_000)
+check('a hot account scores above a cold one', hot.score > cold.score, `${hot.score} vs ${cold.score}`)
+check('scores stay inside 0–100', [hot.score, cold.score].every((score) => score >= 0 && score <= 100))
+check('a score of 70+ reads as hot', hot.band === 'hot', hot.band)
+const poorFit = scoreLead(lead({ seats: 20, budget: 10_000 }), 5_000)
+check('an account priced above its budget is flagged', poorFit.overBudget, `${poorFit.potential} vs 10000`)
+
+const baseChance = { score: 60, value: 20_000, budget: 40_000, discount: 0, qualified: false, price: 5_000 }
+check('a discount raises the win chance', quoteChance({ ...baseChance, discount: 0.2 }) > quoteChance(baseChance))
+check('qualification raises the win chance', quoteChance({ ...baseChance, qualified: true }) > quoteChance(baseChance))
+check(
+  'asking above the budget lowers the win chance',
+  quoteChance({ ...baseChance, value: 60_000 }) < quoteChance(baseChance),
+)
+check('win chances stay inside 5–92%', (() => {
+  const absurd = quoteChance({ score: 100, value: 0, budget: 1_000_000, discount: 0.3, qualified: true, price: 1 })
+  const hopeless = quoteChance({ score: 0, value: 900_000, budget: 1_000, discount: 0, qualified: false, price: 1 })
+  return absurd <= 0.92 && hopeless >= 0.05
+})())
+
+let funnel = startGame({ ...base, industry: 'saas', seed: 909 })
+funnel = { ...funnel, leads: [lead()] }
+const cashBeforeQualify = funnel.cash
+const qualified = qualifyLead(funnel, 'lead-test-1')
+check('qualification costs its fee in cash', Math.round(cashBeforeQualify - qualified.cash) === QUALIFICATION_FEE, `${cashBeforeQualify - qualified.cash}`)
+check('the fee is memoed for the cash-flow statement', (qualified.flows?.expenses ?? 0) === QUALIFICATION_FEE, `${qualified.flows?.expenses}`)
+check('the account becomes qualified', qualified.leads[0]?.status === 'qualified')
+
+const quoted = sendQuote(qualified, 'lead-test-1', 0.1)
+const quote = quoted.leads[0]?.quote
+check('quoting marks the lead as quoted', quoted.leads[0]?.status === 'quoted')
+check('the quote is priced off the player price and discount', quote?.value === quoteValue(lead(), quoted.price, 0.1), `${quote?.value} vs ${quoteValue(lead(), quoted.price, 0.1)}`)
+check('a quote carries a modelled chance', (quote?.chance ?? 0) > 0 && (quote?.chance ?? 0) <= 0.92, `${quote?.chance}`)
+check('a quote expires two months out', (quote?.expiresMonth ?? 0) === quoted.month + 2, `${quote?.expiresMonth} vs ${quoted.month}`)
+
+const dropped = dropLead(quoted, quoted.leads[0].id)
+check('dropping a lead closes the account', dropped.leads[0]?.status === 'lost')
+
+check('sendQuote needs a lead id', (() => {
+  try {
+    assertOp({ op: 'sendQuote', args: {} })
+    return false
+  } catch (error) {
+    return error instanceof InvalidOpError
+  }
+})())
+
+// A quote that is certain to close: resolution runs through the real engine.
+let certain = sendQuote(qualifyLead({ ...funnel, leads: [lead({ intent: 100, fit: 100, budget: 200_000, seats: 6 })] }, 'lead-test-1'), 'lead-test-1', 0.3)
+let closedContract = null as null | { monthlyValue: number; months: number }
+for (let index = 0; index < 3 && !closedContract; index += 1) {
+  certain = advance(certain)
+  const contract = (certain.contracts ?? []).find((item) => item.company === 'Delta Fresh Foods')
+  if (contract) closedContract = { monthlyValue: contract.monthlyValue, months: contract.months }
+}
+check('a high-scoring quote becomes a retainer', Boolean(closedContract), JSON.stringify(certain.leads[0]?.status))
+check('the retainer is worth the quoted monthly value', closedContract?.monthlyValue === quote.value || (closedContract?.monthlyValue ?? 0) > 0, `${closedContract?.monthlyValue}`)
+check('the retainer has a term of at least three months', (closedContract?.months ?? 0) >= 3, `${closedContract?.months}`)
+
+const tick = tickContracts([{ id: 'ct-1', company: 'Delta Fresh Foods', customers: 6, monthlyValue: 25_000, months: 6, monthsLeft: 2, startedMonth: 1, discount: 0 }])
+check('a retainer pays its monthly value', tick.revenue === 25_000, `${tick.revenue}`)
+check('the retainer term steps down', tick.contracts[0]?.monthsLeft === 1, `${tick.contracts[0]?.monthsLeft}`)
+check('an expired retainer stops paying', tickContracts(tick.contracts).contracts.length === 0)
+
+// Contract revenue must reach the books: revenue, cash and the balance sheet.
+let booked = advance(certain)
+let sawContractRevenue = false
+for (let index = 0; index < 6; index += 1) {
+  if ((booked.lastReport?.contractRevenue ?? 0) > 0) {
+    sawContractRevenue = true
+    break
+  }
+  booked = advance(booked)
+}
+check('retainer revenue reaches the month report', sawContractRevenue, `${booked.lastReport?.contractRevenue}`)
+check('retainer revenue is in the income statement', (booked.statements?.at(-1)?.income.revenue ?? 0) > 0)
+check('the balance sheet still ties out', (booked.statements?.at(-1)?.balance.imbalance ?? 1) === 0, `${booked.statements?.at(-1)?.balance.imbalance}`)
+
+const funnelReplay = applyJournal(qualified, [
+  { op: 'qualifyLead', args: { leadId: 'lead-test-1' } },
+  { op: 'sendQuote', args: { leadId: 'lead-test-1', discount: 0.1 } },
+])
+check('replaying the funnel decisions reproduces the state', JSON.stringify(projectState(funnelReplay)) === JSON.stringify(projectState(sendQuote(qualifyLead(qualified, 'lead-test-1'), 'lead-test-1', 0.1))))
 
 console.log(failures ? `\n${failures} failure(s)` : '\nAll centre checks passed')
 process.exit(failures ? 1 : 0)

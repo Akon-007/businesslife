@@ -6,6 +6,7 @@ import {
   startGame,
 } from './engine'
 import type { DifficultyId, FounderBackgroundId, GameOp, GameState, IndustryId, StrategyId } from './types'
+import { QUALIFICATION_FEE, quoteValue } from './sales'
 import { money, uid } from '../lib/format'
 import { applyOp } from './ops'
 import { commitRun, createRemoteCompany, fetchRun, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
@@ -61,6 +62,9 @@ interface GameStore {
   updateRestock: (months: number) => void
   toggleDealDiscount: (dealId: string) => void
   pushDeal: (dealId: string) => void
+  qualifyLead: (leadId: string) => void
+  sendQuote: (leadId: string, discount: number) => void
+  dropLead: (leadId: string) => void
   openBranch: (branchId: string) => void
   setChannelShare: (channelId: string, share: number) => void
   setMixPreset: (mix: Record<string, number>) => void
@@ -440,6 +444,34 @@ export const useGame = create<GameStore>()(
         set({ game: withOp(game, { op: 'pushDeal', args: { dealId } }) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, action: 'push', cost: 1200 }, `deal-push-${dealId}`).catch(() => undefined)
         get().notify(`You spent ${money(1_200)} pushing the deal forward.`, 'neutral')
+      },
+      qualifyLead: (leadId) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const lead = (game.leads ?? []).find((item) => item.id === leadId)
+        if (!lead || lead.status !== 'open') return
+        if (game.cash < QUALIFICATION_FEE) {
+          get().notify(`Qualifying an account costs ${money(QUALIFICATION_FEE)}.`, 'bad')
+          return
+        }
+        set({ game: withOp(game, { op: 'qualifyLead', args: { leadId } }) })
+        void syncCompanyAction(game.backendCompanyId, 'sales/funnel', { leadId, action: 'qualify' }, `lead-qualify-${leadId}`).catch(() => undefined)
+        get().notify(`${lead.company} qualified — the quote will land harder.`, 'good')
+      },
+      sendQuote: (leadId, discount) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const lead = (game.leads ?? []).find((item) => item.id === leadId)
+        if (!lead || (lead.status !== 'open' && lead.status !== 'qualified')) return
+        const value = quoteValue(lead, game.price, discount)
+        set({ game: withOp(game, { op: 'sendQuote', args: { leadId, discount } }) })
+        void syncCompanyAction(game.backendCompanyId, 'sales/funnel', { leadId, action: 'quote', value, discount }, `lead-quote-${leadId}-${game.month}`).catch(() => undefined)
+        get().notify(`Quote sent to ${lead.company}: ${money(value)}/month.`, 'good')
+      },
+      dropLead: (leadId) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        set({ game: withOp(game, { op: 'dropLead', args: { leadId } }) })
       },
       setChannelShare: (channelId, share) => {
         const { game } = get()

@@ -509,3 +509,39 @@ the honest gaps: the marketplace, admin console, `forecast`, `operations/overvie
 `npcs` surfaces are server-side only.
 
 Verification: `verify:wiring` (23 client calls, 0 unwired) · render test now covers the dialogue panel.
+
+
+### 9.14 The sales funnel — **implemented**
+
+§6.4 was a three-stage pipeline with a discount toggle and no notion of qualification, quoting or contracted
+revenue. The funnel is now a real object with four steps, and the arithmetic that decides each step lives in
+one module (`src/game/sales.ts`) so the panel, the engine and the tests cannot disagree.
+
+| Step | Rule | Where |
+|---|---|---|
+| Capture | Four sources roll independently each close: inbound scales with marketing spend, referrals with reputation and live retainers, outbound with sales headcount, events at a flat 8% | `arriveLeads` |
+| Qualification | Costs ₦1,200 (memoed to the cash-flow statement) and buys +0.06 on the quote | `qualifyLead` |
+| Score | 45% intent + 40% fit + 15% can-they-afford-it, banded hot/warm/cold at 70/45 | `scoreLead` |
+| Quote | Seats × list price × (1 − discount), valid 2 months; chance = 0.10 + 0.52·score + 0.9·discount − 0.33·over-budget | `quoteValue`, `quoteChance` |
+| Contract | Won quotes become retainers of 6, 9 or 12 months by value, billed monthly until the term ends | `contractTerm`, `tickContracts` |
+
+**Why contracts do not enter `state.customers`:** they are B2B accounts on retainer, not consumers in the
+demand model. Adding them would count their revenue twice (`customers × price` *and* the retainer) and make
+them churn like consumers, which they do not. They are collected in-month, so they never touch receivables.
+
+The ledger stays honest: retainer revenue is added to both `revenue` and `cashSales` and appears in the P&L;
+the qualification fee posts to `flows.expenses`. `verify:statements` confirms the balance sheet still ties at
+0 across all four industries, months in which a retainer pays included.
+
+Decision ops `qualifyLead`, `sendQuote`, `dropLead` are journaled and replay identically; the close resolves
+quotes from a seeded RNG (`rngFor(seed, 'funnel', month)`) so a replayed run signs the same retainers.
+
+Server: `POST /api/companies/:id/sales/funnel` records the decision on the company (400 without a lead id),
+and the run itself is re-executed server-side from the journal like every other decision.
+
+UI: `src/components/game/SalesFunnel.tsx` in the Sales panel — score bars, over-budget warnings, discount
+choice, quote odds, live-retainer terms with expiry bars, and the recently closed list.
+
+Verification: `verify:centres` +31 funnel checks (`scoreLead`, `quoteChance`, quote maths, qualify/quote/drop,
+retainer payout and expiry, report and statement integration, journal replay), `verify:render` +4 per
+industry, `verify:api` +2 live endpoint checks.

@@ -29,8 +29,20 @@ import {
   unitEconomics,
   withChannelShare,
 } from './marketing'
+import {
+  QUALIFICATION_FEE,
+  QUOTE_VALID_MONTHS,
+  arriveLeads,
+  quoteChance,
+  quoteValue,
+  resolveQuotes,
+  scoreLead,
+  tickContracts,
+} from './sales'
 import type {
   Bill,
+  Contract,
+  Lead,
   Candidate,
   CrisisDef,
   CrisisState,
@@ -302,6 +314,8 @@ export function startGame(input: {
     restockMonths: industry.inventory ? 1 : 0,
     pipeline: [makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 1)), makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 2))],
     pipelineWon: 0,
+    leads: [],
+    contracts: [],
     competitors: makeCompetitors(input.industry),
     economy: economyForMonth(0, economyOffset),
     economyOffset,
@@ -800,8 +814,31 @@ export function advanceMonth(state: GameState): GameState {
     }
   }
 
+  // --- the B2B funnel -----------------------------------------------------
+  // Quotes resolve first (the buyer's answer is about last month's offer), then
+  // live retainers pay, then new leads arrive for this month's work.
+  const salesRng = rngFor(state.seed ?? 0, 'funnel', month)
+  const quoteOutcome = resolveQuotes(state.leads ?? [], month, state.price, salesRng)
+  const contractTick = tickContracts([...(state.contracts ?? []), ...quoteOutcome.contracts])
+  const newLeads = arriveLeads({
+    industry: state.industry,
+    month,
+    price: state.price,
+    marketingSpend: state.marketingSpend ?? 0,
+    reputation: state.reputation,
+    salesHeads: state.team.filter((member) => member.role === 'sales').length,
+    liveContracts: contractTick.active,
+    openLeads: quoteOutcome.leads.filter((lead) => lead.status === 'open' || lead.status === 'qualified').length,
+    rng: salesRng,
+  })
+  const leads: Lead[] = [...quoteOutcome.leads, ...newLeads]
+  const contracts: Contract[] = contractTick.contracts
   const supplyFactor = stockout ? 0.86 : 1
-  const revenue = Math.round(state.customers * state.price * season * supplyFactor)
+  const tradingRevenue = Math.round(state.customers * state.price * season * supplyFactor)
+  // Retainers are billed and collected inside the month, so they add to both
+  // revenue and cash sales and never enter the receivables ledger.
+  const contractRevenue = contractTick.revenue
+  const revenue = tradingRevenue + contractRevenue
   const cogs = Math.round(
     state.customers * industry.costPerCustomer * season * (supplier?.costIndex ?? 1) * supplyFactor,
   )
@@ -828,6 +865,7 @@ export function advanceMonth(state: GameState): GameState {
 
   let workingState: GameState = { ...state, month, quality, economy }
   const pipeline = advancePipeline(workingState)
+
   const newCustomers = newCustomersEstimate(workingState)
   const churnRate = estimateChurn(workingState)
   const churned = Math.round(state.customers * churnRate)
@@ -845,8 +883,8 @@ export function advanceMonth(state: GameState): GameState {
   // Revenue is accrued when the customer buys; cash arrives when the invoice
   // falls due. This gap is what the receivables ledger tracks.
   const credit = CREDIT_TERMS[industry.id]
-  const invoiced = Math.round(revenue * credit.share)
-  const cashSales = revenue - invoiced
+  const invoiced = Math.round(tradingRevenue * credit.share)
+  const cashSales = tradingRevenue - invoiced + contractRevenue
   const defaultRate = economy.phase === 'recession' ? 0.12 : 0.06
   const settlement = settleInvoices(
     state.invoices ?? [],
@@ -964,6 +1002,8 @@ export function advanceMonth(state: GameState): GameState {
     team,
     candidates: makeCandidatePool(rngFor(state.seed ?? 0, 'candidates', month)),
     pipeline: pipeline.pipeline,
+    leads,
+    contracts,
     invoices,
     receivables,
     bills,
@@ -990,6 +1030,9 @@ export function advanceMonth(state: GameState): GameState {
   }
 
   let headline = `${customers >= state.customers ? '+' : ''}${number(customers - state.customers)} net ${industry.customerNounPlural} this month.`
+  if (quoteOutcome.contracts.length > 0) {
+    headline = `${quoteOutcome.contracts.length} retainer${quoteOutcome.contracts.length === 1 ? '' : 's'} signed — ${money(contractRevenue)} recurring booked.`
+  }
   if (pipeline.won > 0) {
     headline = `${number(pipeline.won)} deal${pipeline.won === 1 ? '' : 's'} closed. ${customers >= state.customers ? '+' : ''}${number(customers - state.customers)} net ${industry.customerNounPlural}.`
   }
@@ -1139,6 +1182,18 @@ export function advanceMonth(state: GameState): GameState {
     drivers.push(`${number(settlement.overdue)} invoice${settlement.overdue === 1 ? '' : 's'} missed the due date — late payers recover about 80% next month.`)
   }
   if (pipeline.notes.length) drivers.push(...pipeline.notes.slice(0, 2))
+  if (quoteOutcome.notes.length) drivers.push(...quoteOutcome.notes.slice(0, 2))
+  if (contractRevenue > 0) {
+    drivers.push(
+      `${money(contractRevenue)} of revenue came from ${contractTick.active} live retainer${contractTick.active === 1 ? '' : 's'} — collected in the month, not invoiced.`,
+    )
+  }
+  if (newLeads.length) {
+    drivers.push(`${number(newLeads.length)} new account${newLeads.length === 1 ? '' : 's'} entered the funnel.`)
+  }
+  if (contractTick.ended.length) {
+    drivers.push(`Retainer${contractTick.ended.length === 1 ? '' : 's'} ended: ${contractTick.ended.slice(0, 2).join(', ')}. Renew or replace the revenue.`)
+  }
   if (branchDemand > 0) drivers.push(`Branches added ${number(branchDemand)} demand points.`)
   if (trainingBudget > 0) drivers.push(`Training spend of ${money(trainingBudget)} lifted team capability.`)
   if (promoted) drivers.push('A teammate earned a promotion and a raise.')
@@ -1252,6 +1307,10 @@ export function advanceMonth(state: GameState): GameState {
     channels,
     cac: economics.cac,
     ltv: economics.ltv,
+    contractRevenue,
+    leadsAdded: newLeads.length,
+    contractsWon: quoteOutcome.contracts.length,
+    contractsActive: contractTick.active,
   }
 
   next = { ...next, lastReport: report }
@@ -1607,6 +1666,88 @@ export function payAllBills(state: GameState): GameState {
   })
 }
 
+/**
+ * Qualify an account: pay for references and a discovery call, and the quote
+ * that follows carries a little more weight (`quoteChance` adds 0.06).
+ */
+export function qualifyLead(state: GameState, leadId: string): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || lead.status !== 'open') return state
+  if (state.cash < QUALIFICATION_FEE) return state
+  const next: GameState = {
+    ...state,
+    cash: state.cash - QUALIFICATION_FEE,
+    flows: recordFlow(state, 'expenses', QUALIFICATION_FEE),
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId ? { ...item, status: 'qualified' as const, note: 'Qualified — discovery call done, budget confirmed.' } : item,
+    ),
+  }
+  return addLog(next, {
+    month: state.month,
+    title: `${lead.company} qualified`,
+    detail: `${money(QUALIFICATION_FEE)} spent on references and a discovery call. The quote is stronger for it.`,
+    tone: 'neutral',
+    kind: 'market',
+  })
+}
+
+/**
+ * Send a quote: the monthly retainer is the current list price times the seats
+ * the account would take, less the discount the player chose to offer.
+ */
+export function sendQuote(state: GameState, leadId: string, discount = 0): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || (lead.status !== 'open' && lead.status !== 'qualified')) return state
+  const scored = scoreLead(lead, state.price)
+  const value = quoteValue(lead, state.price, discount)
+  const chance = quoteChance({
+    score: scored.score,
+    value,
+    budget: lead.budget,
+    discount: clamp(discount, 0, 0.3),
+    qualified: lead.status === 'qualified',
+    price: state.price,
+  })
+  const next: GameState = {
+    ...state,
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId
+        ? {
+            ...item,
+            status: 'quoted' as const,
+            quote: {
+              value,
+              discount: clamp(discount, 0, 0.3),
+              sentMonth: state.month,
+              expiresMonth: state.month + QUOTE_VALID_MONTHS,
+              chance,
+            },
+            note: `Quote sent: ${money(value)}/month, ${Math.round(chance * 100)}% modelled chance.`,
+          }
+        : item,
+    ),
+  }
+  return addLog(next, {
+    month: state.month,
+    title: `Quote sent to ${lead.company}`,
+    detail: `${money(value)} per month for ${number(lead.seats)} seats${discount > 0 ? `, ${Math.round(discount * 100)}% discount` : ''}. Answer expected by month ${state.month + QUOTE_VALID_MONTHS}.`,
+    tone: 'neutral',
+    kind: 'market',
+  })
+}
+
+/** Walk away from an account. Costs nothing but the opportunity. */
+export function dropLead(state: GameState, leadId: string): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || lead.status === 'won' || lead.status === 'lost') return state
+  return {
+    ...state,
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId ? { ...item, status: 'lost' as const, note: 'Dropped — not a fit for this offer.' } : item,
+    ),
+  }
+}
+
 export function openBranch(state: GameState, branchId: string): GameState {
   const branch = state.branches?.find((item) => item.id === branchId)
   if (!branch || branch.openedMonth !== null) return state
@@ -1770,6 +1911,8 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     restockMonths: game.restockMonths ?? (industry.inventory ? 1 : 0),
     pipeline: game.pipeline ?? [],
     pipelineWon: game.pipelineWon ?? 0,
+    leads: game.leads ?? [],
+    contracts: game.contracts ?? [],
     competitors: game.competitors?.length ? game.competitors : makeCompetitors(game.industry),
     economy: game.economy ?? economyForMonth(game.month ?? 0, economyOffset),
     economyOffset,
@@ -1787,6 +1930,10 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
           stockout: game.lastReport.stockout ?? false,
           dealsWon: game.lastReport.dealsWon ?? 0,
           branchDemand: game.lastReport.branchDemand ?? 0,
+          contractRevenue: game.lastReport.contractRevenue ?? 0,
+          leadsAdded: game.lastReport.leadsAdded ?? 0,
+          contractsWon: game.lastReport.contractsWon ?? 0,
+          contractsActive: game.lastReport.contractsActive ?? 0,
         }
       : null,
   }

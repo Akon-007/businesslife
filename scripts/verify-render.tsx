@@ -47,6 +47,7 @@ async function main() {
   const { ReportModal } = await import('../src/components/game/modals')
   const { MarketingPanel } = await import('../src/components/game/MarketingPanel')
   const { CharacterDialogue } = await import('../src/components/game/CharacterDialogue')
+  const { SalesFunnel } = await import('../src/components/game/SalesFunnel')
   const { advanceMonth, resolveCrisis, startGame } = await import('../src/game/engine')
   const { money } = await import('../src/lib/format')
 
@@ -116,6 +117,49 @@ for (const industry of ['saas', 'retail'] as const) {
   if (!dialogueError) {
     check(`${industry}: dialogue states the guardrails`, dialogueMarkup.includes('No tools, no state changes'))
     check(`${industry}: dialogue has no leaked values`, !/NaN|undefined|\[object Object\]/.test(dialogueMarkup))
+  }
+
+  let funnelMarkup = ''
+  let funnelError: unknown = null
+  const funnelGame = {
+    ...game,
+    leads: [
+      {
+        id: 'lead-render-1',
+        company: 'Delta Fresh Foods',
+        contact: 'Ngozi Eze',
+        source: 'inbound' as const,
+        seats: 8,
+        budget: 220_000,
+        intent: 88,
+        fit: 91,
+        addedMonth: 0,
+        status: 'qualified' as const,
+      },
+    ],
+    contracts: [
+      {
+        id: 'ct-render-1',
+        company: 'Palm Grove Retail',
+        customers: 6,
+        monthlyValue: 96_000,
+        months: 9,
+        monthsLeft: 7,
+        startedMonth: 2,
+        discount: 0.1,
+      },
+    ],
+  }
+  try {
+    funnelMarkup = renderToStaticMarkup(<SalesFunnel game={funnelGame} />)
+  } catch (caught) {
+    funnelError = caught
+  }
+  check(`${industry}: sales funnel renders`, !funnelError, funnelError instanceof Error ? funnelError.message : String(funnelError))
+  if (!funnelError) {
+    check(`${industry}: funnel shows the live retainer`, funnelMarkup.includes('Palm Grove Retail'), 'retainer missing')
+    check(`${industry}: funnel shows the account score`, funnelMarkup.includes('Hot 90') || funnelMarkup.includes('Hot 89') || funnelMarkup.includes('Hot 9'), 'score missing')
+    check(`${industry}: funnel has no leaked values`, !/NaN|undefined|\[object Object\]/.test(funnelMarkup))
   }
 
   const report = game.lastReport

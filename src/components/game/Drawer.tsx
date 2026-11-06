@@ -60,6 +60,7 @@ import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
 import { FinancePanel } from './FinancePanel'
 import { MarketingPanel } from './MarketingPanel'
+import { SalesFunnel } from './SalesFunnel'
 import { CharacterDialogue } from './CharacterDialogue'
 import { useDialogFocus } from '../ui/useDialogFocus'
 
@@ -1401,6 +1402,8 @@ function SalesPanel() {
           </ul>
         )}
       </PanelSection>
+
+      <SalesFunnel game={game} />
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-violet-soft/60 p-3.5 ring-1 ring-violet/15">
         <Target className="mt-0.5 size-4 shrink-0 text-violet" />

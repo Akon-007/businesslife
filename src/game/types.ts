@@ -110,6 +110,50 @@ export interface Deal {
   pushed?: boolean
 }
 
+/** Where a funnel lead came from. Each source has its own intent/fit profile. */
+export type LeadSource = 'inbound' | 'referral' | 'outbound' | 'event'
+export type LeadStatus = 'open' | 'qualified' | 'quoted' | 'won' | 'lost'
+
+export interface Quote {
+  /** Monthly contract value if accepted (₦). */
+  value: number
+  discount: number
+  sentMonth: number
+  expiresMonth: number
+  /** The chance the model gave at send time; the close re-rolls from it. */
+  chance: number
+}
+
+export interface Lead {
+  id: string
+  company: string
+  contact: string
+  source: LeadSource
+  /** Accounts/seats the buyer would put on the retainer. */
+  seats: number
+  /** What they can spend per month (₦). */
+  budget: number
+  /** 0–100 buying signals. */
+  intent: number
+  /** 0–100 how well the offer matches their need. */
+  fit: number
+  addedMonth: number
+  status: LeadStatus
+  quote?: Quote
+  note?: string
+}
+
+export interface Contract {
+  id: string
+  company: string
+  customers: number
+  monthlyValue: number
+  months: number
+  monthsLeft: number
+  startedMonth: number
+  discount: number
+}
+
 export interface Competitor {
   id: string
   name: string
@@ -426,6 +470,9 @@ export type GameOpName =
   | 'payBill'
   | 'payAllBills'
   | 'missionEvidence'
+  | 'qualifyLead'
+  | 'sendQuote'
+  | 'dropLead'
 
 /**
  * One recorded decision. The journal is append-only: replaying the seed plus
@@ -520,6 +567,9 @@ export interface GameState {
   restockMonths: number
   pipeline: Deal[]
   pipelineWon: number
+  /** B2B funnel: scouted accounts, their quotes and the retainers that came of them. */
+  leads: Lead[]
+  contracts: Contract[]
   competitors: Competitor[]
   economy: EconomyState
   economyOffset: number
@@ -572,6 +622,12 @@ export interface MonthReport {
   ltv: number
   badDebt: number
   netProfit: number
+  /** Recurring revenue from signed B2B retainers (collected in-month). */
+  contractRevenue: number
+  leadsAdded: number
+  contractsWon: number
+  /** Retainers still paying at the end of the month. */
+  contractsActive: number
 }
 
 export interface GameMetrics {
