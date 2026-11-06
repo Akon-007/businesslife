@@ -52,6 +52,13 @@ export function SiteNav({ overlay = false }: { overlay?: boolean }) {
             </Link>
 
             <nav className="hidden items-center gap-1 lg:flex" aria-label="Main navigation">
+              <Link
+                to="/lecturer"
+                className="mb-1 flex items-center justify-between rounded-2xl bg-ink px-4 py-3 text-[13.5px] font-semibold text-white"
+              >
+                Instructor portal
+                <ArrowRight className="size-4 text-lime" />
+              </Link>
               {LINKS.map((link) => (
                 <a
                   key={link.href}
@@ -64,6 +71,12 @@ export function SiteNav({ overlay = false }: { overlay?: boolean }) {
             </nav>
 
             <div className="flex items-center gap-2">
+              <Link
+                to="/lecturer"
+                className="hidden rounded-full px-3.5 py-2 text-[13px] font-semibold text-ink-600 transition hover:bg-ink/5 hover:text-ink md:block"
+              >
+                For instructors
+              </Link>
               <Link
                 to="/play"
                 className="hidden rounded-full px-3.5 py-2 text-[13px] font-semibold text-ink-600 transition hover:bg-ink/5 hover:text-ink sm:block"
@@ -105,6 +118,13 @@ export function SiteNav({ overlay = false }: { overlay?: boolean }) {
               className="glass-strong mx-4 mt-24 rounded-3xl p-3"
               onClick={(event) => event.stopPropagation()}
             >
+              <Link
+                to="/lecturer"
+                className="mb-1 flex items-center justify-between rounded-2xl bg-ink px-4 py-3 text-[13.5px] font-semibold text-white"
+              >
+                Instructor portal
+                <ArrowRight className="size-4 text-lime" />
+              </Link>
               {LINKS.map((link) => (
                 <a
                   key={link.href}

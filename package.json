@@ -9,7 +9,11 @@
     "build": "tsc -b && vite build",
     "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify": "node scripts/verify-integrity.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-legit-play.ts",
+    "verify:api": "node scripts/verify-integrity.mjs",
+    "verify:scoring": "npx tsx scripts/verify-scoring.ts",
+    "verify:legit": "npx tsx scripts/verify-legit-play.ts"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

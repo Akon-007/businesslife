@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import {
   acceptOffer,
   advanceDay,
+  authorityPayload,
   acknowledgeMissionEvidence,
   declineOffers,
   fireEmployee,
@@ -26,7 +27,7 @@ import {
 } from './engine'
 import type { DifficultyId, FounderBackgroundId, GameState, IndustryId, StrategyId } from './types'
 import { money, uid } from '../lib/format'
-import { createRemoteCompany, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
+import { commitRun, createRemoteCompany, fetchRun, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
 
 type Toast = { id: string; message: string; tone: 'good' | 'bad' | 'neutral' }
 
@@ -86,6 +87,8 @@ interface GameStore {
   notify: (message: string, tone?: Toast['tone']) => void
   completeMission: (missionId: string) => void
   recordEvidence: (evidence: string[]) => void
+  syncRun: () => void
+  hydrateAuthority: () => Promise<void>
 }
 
 const archive = (game: GameState): ArchivedRun => ({ id: uid(), savedAt: Date.now(), game })
@@ -102,7 +105,10 @@ export const useGame = create<GameStore>()(
         const nextGame = startGame(input)
         set({ game: nextGame, runs: nextRuns })
         void createRemoteCompany({ founder: nextGame.founder, company: nextGame.company, industry: nextGame.industry, strategy: nextGame.strategy, ambition: 'Launch and reach break-even', startingCash: nextGame.cash, firstName: nextGame.firstName, lastName: nextGame.lastName, nickname: nextGame.nickname, avatar: nextGame.avatar, accountEmail: nextGame.accountEmail, password: input.password, problem: input.problem, solution: input.solution })
-          .then((remote) => set((state) => state.game ? { game: { ...state.game, backendCompanyId: remote.id } } : state))
+          .then((remote) => {
+            set((state) => state.game ? { game: { ...state.game, backendCompanyId: remote.id } } : state)
+            get().syncRun()
+          })
           .catch(() => get().notify('Local simulation is running. Backend sync will retry on the next action.', 'neutral'))
       },
       reset: () => {
@@ -139,6 +145,7 @@ export const useGame = create<GameStore>()(
         const next = advanceDay(game)
         set({ game: next })
         void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 1 }).catch(() => undefined)
+        if (next.month !== game.month) get().syncRun()
       },
       completeMission: () => {
         get().notify('Complete the business action first. The system will mark the mission automatically.', 'neutral')
@@ -153,6 +160,85 @@ export const useGame = create<GameStore>()(
         set({ game: next })
         for (const missionId of newlyCompleted) void syncMission(game.backendCompanyId, missionId).catch(() => undefined)
         if (newlyCompleted.length) get().notify(`${newlyCompleted.length === 1 ? 'Mission' : 'Missions'} completed from your business actions.`, 'good')
+      },
+      syncRun: () => {
+        const { game } = get()
+        if (!game?.backendCompanyId) return
+        const companyId = game.backendCompanyId
+        void commitRun(companyId, authorityPayload(game))
+          .then((result) => {
+            set((state) => {
+              if (!state.game) return state
+              const next = {
+                ...state.game,
+                authority: {
+                  score: result.score,
+                  month: result.canonical.month,
+                  cash: result.canonical.cashKobo / 100,
+                  commits: (state.game.authority?.commits ?? 0) + 1,
+                  updatedAt: new Date().toISOString(),
+                  integrity: result.tampered ? ('flagged' as const) : ('verified' as const),
+                  readOnly: false,
+                },
+              }
+              if (!result.tampered) return { game: next }
+              return {
+                game: {
+                  ...next,
+                  cash: result.canonical.cashKobo / 100,
+                  customers: result.canonical.customers,
+                  valuation: result.canonical.valuationKobo / 100,
+                },
+              }
+            })
+            if (result.tampered) {
+              const fields = result.violations.map((item) => item.field).slice(0, 3).join(', ')
+              get().notify(`The server corrected figures that did not reconcile (${fields}).`, 'bad')
+            }
+          })
+          .catch(() => {
+            set((state) => state.game?.authority ? { game: { ...state.game, authority: { ...state.game.authority, integrity: 'unknown' } } } : state)
+          })
+      },
+      hydrateAuthority: async () => {
+        const { game } = get()
+        if (!game?.backendCompanyId) return
+        try {
+          const run = await fetchRun(game.backendCompanyId)
+          if (!run.authority.commits) {
+            get().syncRun()
+            return
+          }
+          const serverCash = run.canonical.cashKobo / 100
+          const drifted = Math.abs(serverCash - game.cash) > Math.max(1, serverCash * 0.02)
+          set((state) => {
+            if (!state.game) return state
+            const base = {
+              ...state.game,
+              authority: {
+                score: run.score,
+                month: run.canonical.month,
+                cash: serverCash,
+                commits: run.authority.commits,
+                updatedAt: run.authority.updatedAt,
+                integrity: run.violations.length ? ('flagged' as const) : ('verified' as const),
+                readOnly: run.readOnly,
+              },
+            }
+            if (!drifted) return { game: base }
+            return {
+              game: {
+                ...base,
+                cash: serverCash,
+                customers: run.canonical.customers,
+                valuation: run.canonical.valuationKobo / 100,
+              },
+            }
+          })
+          if (drifted) get().notify('Protected figures were restored from the server — your saved run had drifted.', 'neutral')
+        } catch {
+          /* offline: keep playing on the local simulation */
+        }
       },
       resolve: (optionId) => {
         const { game } = get()

@@ -9,10 +9,14 @@ import { consumeStock, demandFor, operationsOverview } from './operations.js'
 import { evaluateInvestor, interviewCustomer, seedCompanyNpcs, selectSupplier as selectNpcSupplier } from './npcs.js'
 import { searchMarketplace, seedMarketplace } from './marketplace.js'
 import { IN_GAME_APPS } from './apps.js'
+import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthority, validateSnapshot, verifyChain, type RunSnapshot } from './authority.js'
+import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
+import { recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
 import type { Company, Database, Player } from './types.js'
 
 const port = Number(process.env.PORT ?? 8787)
+const host = process.env.HOST ?? '127.0.0.1'
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': 'http://127.0.0.1:5173', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS' }
 
 function send(response: ServerResponse, status: number, body: unknown) {
@@ -39,6 +43,26 @@ function auth(request: IncomingMessage, database: Database): Player | null {
 
 function ownedCompany(database: Database, player: Player, id: string) {
   return database.companies.find((company) => company.id === id && company.playerId === player.id) ?? null
+}
+
+function isInstructor(player: Player) {
+  return player.role === 'instructor' || player.role === 'admin'
+}
+
+/** An instructor may read (never write) companies belonging to their own students. */
+function taughtCompany(database: Database, player: Player, id: string) {
+  if (!isInstructor(player)) return null
+  const company = database.companies.find((item) => item.id === id)
+  if (!company) return null
+  const taught = database.classes.some((classroom) => classroom.lecturerId === player.id && classroom.studentIds.includes(company.playerId))
+  return taught ? company : null
+}
+
+function sendFile(response: ServerResponse, status: number, contentType: string, payload: string, filename?: string) {
+  const headers: Record<string, string> = { 'content-type': contentType, 'access-control-allow-origin': 'http://127.0.0.1:5173' }
+  if (filename) headers['content-disposition'] = `attachment; filename="${filename}"`
+  response.writeHead(status, headers)
+  response.end(payload)
 }
 
 function required(input: Record<string, unknown>, keys: string[]) {
@@ -85,9 +109,13 @@ function ledger(company: Company, type: Company['transactions'][number]['type'],
 function createCompany(playerId: string, input: Record<string, unknown>): Company {
   required(input, ['name', 'sector', 'problem', 'solution', 'businessModel', 'ambition'])
   const timestamp = now()
+  const initialCashKobo = Math.round(Number(input.initialCapitalKobo ?? 0))
   return {
     id: newId('co'), playerId, name: String(input.name).trim(), sector: String(input.sector), businessModel: String(input.businessModel), problem: String(input.problem), solution: String(input.solution), ambition: String(input.ambition), status: 'draft', createdAt: timestamp, updatedAt: timestamp, revenue: 0, expenses: 0,
     ownership: [{ holder: 'founder', shares: 100 }], research: [], businessPlan: null, registration: null, compliance: [], bankApplication: null, employees: [], fundingRequests: [], pitchDeck: null, investorApplications: [], offers: [], brand: null, products: [], suppliers: [], campaigns: [], meetings: [], orders: [], transactions: [], journal: [], events: [], progression: { xp: 0, reputation: 0, currentLevel: 1, completedMissions: [] }, balanceKobo: Math.round(Number(input.initialCapitalKobo ?? 0)), revenueKobo: 0, expensesKobo: 0, balance: Math.round(Number(input.initialCapitalKobo ?? 0)) / 100, simulation: { day: 1, lastAdvancedAt: timestamp, processedSchedules: [] }, notifications: [], popups: [], socialPosts: [], socialComments: [], reputationIncidents: [], conversations: [], messages: [], reputationProfile: { customerTrust: 50, productQuality: 50, deliveryReliability: 50, paymentReliability: 50, employeeReputation: 50, publicSentiment: 50, businessCredibility: 50 },
+    authority: { ...emptyAuthority(), cashKobo: initialCashKobo, updatedAt: timestamp },
+    auditChain: [],
+    aiTraces: [],
   }
 }
 
@@ -106,27 +134,126 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (request.method === 'GET' && marketplaceBusinessMatch) { const business = database.marketplace.businesses.find((item) => item.id === marketplaceBusinessMatch[1]); if (!business) { error(response, 404, 'Business not found.'); return } send(response, 200, { business, listings: database.marketplace.listings.filter((listing) => listing.businessId === business.id) }); return }
   if (request.method === 'GET' && path === '/api/companies/name-availability') { const name = String(url.searchParams.get('name') ?? '').trim(); const available = name.length >= 2 && !database.companies.some((company) => company.name.trim().toLowerCase() === name.toLowerCase()); send(response, 200, { available, name }); return }
   if (request.method === 'POST' && path === '/api/auth/dev-login') {
-    const input = await body(request); const player: Player = { id: newId('plr'), name: String(input.name ?? 'Founder'), firstName: String(input.firstName ?? ''), lastName: String(input.lastName ?? ''), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'), accountEmail: String(input.accountEmail ?? ''), passwordHash: input.password ? createHash('sha256').update(String(input.password)).digest('hex') : undefined, createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }; database.players.push(player)
+    const input = await body(request); const requestedRole = String(input.role ?? 'learner'); const role: Player['role'] = requestedRole === 'instructor' || requestedRole === 'admin' ? requestedRole : 'learner'
+    const player: Player = { id: newId('plr'), name: String(input.name ?? 'Founder'), role, firstName: String(input.firstName ?? ''), lastName: String(input.lastName ?? ''), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'), accountEmail: String(input.accountEmail ?? ''), passwordHash: input.password ? createHash('sha256').update(String(input.password)).digest('hex') : undefined, createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }; database.players.push(player)
     const token = newId('session'); database.sessions.push({ token, playerId: player.id, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }); await saveDatabase(database); send(response, 201, { player, token }); return
   }
   const player = auth(request, database)
   if (!player) { error(response, 401, 'Authentication required. Use POST /api/auth/dev-login for a local session.'); return }
   if (request.method === 'GET' && path === '/api/me') { send(response, 200, player); return }
+  if (path === '/api/classes' && request.method === 'GET') {
+    const classrooms = database.classes.filter((item) => item.lecturerId === player.id || item.studentIds.includes(player.id))
+    send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: isInstructor(player) ? rosterFor(database, item) : undefined })) }); return
+  }
   if (path === '/api/classes' && request.method === 'POST') {
-    const input = await body(request); required(input, ['name']); const classroom = { id: newId('class'), lecturerId: player.id, name: String(input.name), studentIds: [], scenario: null, createdAt: now() }; database.classes.push(classroom); await saveDatabase(database); send(response, 201, classroom); return
+    if (!isInstructor(player)) { error(response, 403, 'Instructor access required. Sign in with an instructor account to create cohorts.'); return }
+    const input = await body(request); required(input, ['name']); const classroom = { id: newId('class'), lecturerId: player.id, name: String(input.name).trim().slice(0, 80), studentIds: [] as string[], scenario: null, createdAt: now(), records: [] }; database.classes.push(classroom)
+    await saveDatabase(database); send(response, 201, classroom); return
   }
   const classMatch = path.match(/^\/api\/classes\/([^/]+)(?:\/(.*))?$/)
   if (classMatch) {
-    const classroom = database.classes.find((item) => item.id === classMatch[1] && item.lecturerId === player.id); if (!classroom) { error(response, 404, 'Class not found.'); return }
+    const classroom = database.classes.find((item) => item.id === classMatch[1] && (item.lecturerId === player.id || item.studentIds.includes(player.id))); if (!classroom) { error(response, 404, 'Class not found.'); return }
     const action = classMatch[2] ?? ''
-    if (request.method === 'GET' && !action) { send(response, 200, classroom); return }
-    if (request.method === 'POST' && action === 'invite') { const input = await body(request); required(input, ['studentId']); if (!classroom.studentIds.includes(String(input.studentId))) classroom.studentIds.push(String(input.studentId)); }
-    else if (request.method === 'POST' && action === 'scenario') { classroom.scenario = await body(request) }
-    else { error(response, 404, 'Class endpoint not found.'); return }
-    await saveDatabase(database); send(response, 200, classroom); return
+    const lecturer = classroom.lecturerId === player.id && isInstructor(player)
+    if (request.method === 'GET' && !action) { send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return }
+    if (request.method === 'GET' && (action === 'roster' || action === 'export.csv')) {
+      const roster = rosterFor(database, classroom)
+      if (action === 'export.csv') { sendFile(response, 200, 'text/csv; charset=utf-8', rosterCsv(classroom, roster), `${classroom.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-roster.csv`); return }
+      send(response, 200, { class: classroom, roster }); return
+    }
+    if (request.method === 'POST' && action === 'invite') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request)
+      const student = input.studentId
+        ? database.players.find((item) => item.id === String(input.studentId))
+        : database.players.find((item) => item.accountEmail && item.accountEmail.toLowerCase() === String(input.email ?? '').toLowerCase())
+      if (!student) { error(response, 404, 'No student account matches that id or email.'); return }
+      if (student.id === player.id) { error(response, 409, 'The lecturer cannot join their own cohort.'); return }
+      if (!classroom.studentIds.includes(student.id)) classroom.studentIds.push(student.id)
+      recordFor(classroom, student.id)
+      await saveDatabase(database); send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return
+    }
+    if (request.method === 'POST' && action === 'scenario') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request)
+      classroom.scenario = {
+        title: String(input.title ?? 'Cohort scenario').slice(0, 80),
+        industry: String(input.industry ?? 'saas'),
+        difficulty: String(input.difficulty ?? 'standard'),
+        startingCash: Math.max(0, Number(input.startingCash ?? 5_000_000)),
+        months: Math.max(1, Math.min(60, Number(input.months ?? 12))),
+        deadline: input.deadline ? String(input.deadline) : null,
+        objectives: Array.isArray(input.objectives) ? input.objectives.slice(0, 10).map((item) => String(item).slice(0, 160)) : [],
+        assignedAt: now(),
+        assignedBy: player.id,
+      }
+      for (const studentId of classroom.studentIds) recordFor(classroom, studentId).assignedAt = classroom.scenario.assignedAt as string
+      await saveDatabase(database); send(response, 200, classroom); return
+    }
+    if (request.method === 'POST' && action === 'grade') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request); required(input, ['studentId', 'grade'])
+      const studentId = String(input.studentId)
+      if (!classroom.studentIds.includes(studentId)) { error(response, 404, 'That student is not in this cohort.'); return }
+      const grade = Math.round(Number(input.grade))
+      if (!Number.isFinite(grade) || grade < 0 || grade > 100) { error(response, 400, 'Grade must be between 0 and 100.'); return }
+      const record = recordFor(classroom, studentId)
+      record.grade = grade
+      record.feedback = String(input.feedback ?? '').slice(0, 1000)
+      record.gradedBy = player.id
+      record.gradedAt = now()
+      const company = database.companies.filter((item) => item.playerId === studentId).pop()
+      if (company) {
+        appendAudit(company, 'instructor_grade', player.id, { grade, feedbackLength: record.feedback.length, cohortId: classroom.id })
+        company.notifications.unshift({ id: newId('note'), type: 'grade_recorded', priority: 'important', message: `Your instructor recorded a grade of ${grade}.`, createdAt: now() })
+      }
+      await saveDatabase(database); send(response, 200, { ...record, roster: rosterFor(database, classroom) }); return
+    }
+    if (request.method === 'POST' && action === 'reset') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request); required(input, ['studentId'])
+      const studentId = String(input.studentId)
+      if (!classroom.studentIds.includes(studentId)) { error(response, 404, 'That student is not in this cohort.'); return }
+      const company = database.companies.filter((item) => item.playerId === studentId).pop()
+      if (!company) { error(response, 404, 'That student has not started a company yet.'); return }
+      const start = scenarioStart(classroom.scenario)
+      const authority = authorityOf(company)
+      company.authority = {
+        ...authority,
+        version: 1,
+        score: 0,
+        month: start.month,
+        day: start.day,
+        cashKobo: start.startingCashKobo || authority.cashKobo,
+        customers: 0,
+        revenueKobo: 0,
+        expensesKobo: 0,
+        valuationKobo: 0,
+        status: 'active',
+        commits: 0,
+        updatedAt: now(),
+        lastViolationAt: undefined,
+      }
+      company.balanceKobo = company.authority.cashKobo
+      company.balance = company.balanceKobo / 100
+      company.revenueKobo = 0; company.revenue = 0
+      company.expensesKobo = 0; company.expenses = 0
+      company.authorityViolations = []
+      company.simulation.day = start.day
+      recordFor(classroom, studentId).resetAt = now()
+      appendAudit(company, 'cohort_run_reset', player.id, { cohortId: classroom.id, startingCashKobo: company.authority.cashKobo })
+      company.notifications.unshift({ id: newId('note'), type: 'run_reset', priority: 'critical', message: 'Your instructor reset the scenario to its starting conditions.', createdAt: now() })
+      await saveDatabase(database); send(response, 200, { reset: true, authority: publicAuthority(company.authority), roster: rosterFor(database, classroom) }); return
+    }
+    if (request.method === 'POST' && action === 'leave') {
+      classroom.studentIds = classroom.studentIds.filter((id) => id !== player.id)
+      classroom.records = (classroom.records ?? []).filter((item) => item.studentId !== player.id)
+      await saveDatabase(database); send(response, 200, { left: true }); return
+    }
+    error(response, 404, 'Class endpoint not found.'); return
   }
   if (request.method === 'GET' && path === '/api/companies') { send(response, 200, { companies: database.companies.filter((company) => company.playerId === player.id) }); return }
-  if (request.method === 'POST' && path === '/api/companies') { const input = await body(request); const requestedName = String(input.name ?? '').trim(); if (database.companies.some((item) => item.name.trim().toLowerCase() === requestedName.toLowerCase())) { error(response, 409, 'That business name is already taken. Choose another name.'); return } const company = createCompany(player.id, input); database.companies.push(company); database.npcs.push(...seedCompanyNpcs(company.id, company.sector)); await saveDatabase(database); send(response, 201, company); return }
+  if (request.method === 'POST' && path === '/api/companies') { const input = await body(request); const requestedName = String(input.name ?? '').trim(); if (database.companies.some((item) => item.name.trim().toLowerCase() === requestedName.toLowerCase())) { error(response, 409, 'That business name is already taken. Choose another name.'); return } const company = createCompany(player.id, input); database.companies.push(company); database.npcs.push(...seedCompanyNpcs(company.id, company.sector)); appendAudit(company, 'company_created', player.id, { sector: company.sector, initialCapitalKobo: company.balanceKobo }); await saveDatabase(database); send(response, 201, company); return }
   const stage2CompanyMatch = path.match(/^\/api\/companies\/([^/]+)\/stage-02\/(report|enter)$/)
   if (stage2CompanyMatch) {
     const company = ownedCompany(database, player, stage2CompanyMatch[1]); if (!company) { error(response, 404, 'Company not found.'); return }
@@ -175,6 +302,78 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     if (request.method === 'POST' && action.startsWith('notifications/') && action.endsWith('/read')) { const item = company.notifications.find((value) => value.id === communicationsMatch[9]); if (!item) { error(response, 404, 'Notification not found.'); return } item.read = true; await saveDatabase(database); send(response, 200, item); return }
     error(response, 404, 'Communications endpoint not found.'); return
   }
+  const runMatch = path.match(/^\/api\/companies\/([^/]+)\/run$/)
+  if (runMatch) {
+    const company = ownedCompany(database, player, runMatch[1]) ?? taughtCompany(database, player, runMatch[1])
+    if (!company) { error(response, 404, 'Company not found.'); return }
+    if (request.method === 'GET') {
+      const authority = authorityOf(company)
+      send(response, 200, {
+        companyId: company.id,
+        authority: publicAuthority(authority),
+        canonical: {
+          month: authority.month, day: authority.day, cashKobo: authority.cashKobo, customers: authority.customers,
+          revenueKobo: authority.revenueKobo, expensesKobo: authority.expensesKobo, valuationKobo: authority.valuationKobo, status: authority.status,
+        },
+        score: authority.score,
+        integrity: verifyChain(company),
+        violations: (company.authorityViolations ?? []).slice(0, 10),
+        readOnly: company.playerId !== player.id,
+      }); return
+    }
+    if (request.method === 'PUT') {
+      if (company.playerId !== player.id) { error(response, 403, 'Only the company owner can commit a run.'); return }
+      const input = await body(request) as Partial<RunSnapshot>
+      const result = validateSnapshot(company, input)
+      company.authority = result.authority
+      if (result.violations.length) company.authorityViolations = [...result.violations, ...(company.authorityViolations ?? [])].slice(0, 20)
+      applyCanonical(company, result.canonical)
+      appendAudit(company, 'run_commit', player.id, { month: result.canonical.month, score: result.score, tampered: result.tampered, violations: result.violations.map((item) => item.code) })
+      await saveDatabase(database)
+      send(response, 200, {
+        accepted: !result.tampered,
+        tampered: result.tampered,
+        canonical: result.canonical,
+        authority: publicAuthority(result.authority),
+        score: result.score,
+        violations: result.violations,
+        integrity: verifyChain(company),
+      }); return
+    }
+    error(response, 405, 'Use GET or PUT on a company run.'); return
+  }
+  const auditMatch = path.match(/^\/api\/companies\/([^/]+)\/audit$/)
+  if (request.method === 'GET' && auditMatch) {
+    const company = ownedCompany(database, player, auditMatch[1]) ?? taughtCompany(database, player, auditMatch[1])
+    if (!company) { error(response, 404, 'Company not found.'); return }
+    const chain = company.auditChain ?? []
+    send(response, 200, { verification: verifyChain(company), records: chain.slice(-50), violations: (company.authorityViolations ?? []).slice(0, 20) }); return
+  }
+  const aiMatch = path.match(/^\/api\/companies\/([^/]+)\/ai(?:\/(characters|advice|dialogue))?$/)
+  if (aiMatch) {
+    const company = ownedCompany(database, player, aiMatch[1])
+    if (!company) { error(response, 404, 'Company not found.'); return }
+    const action = aiMatch[2] ?? 'characters'
+    if (request.method === 'GET' && action === 'characters') {
+      send(response, 200, {
+        characters: Object.values(CHARACTERS).map((character) => ({ id: character.id, name: character.name, role: character.role, goals: character.goals, personality: character.personality, knowledge: character.knowledge })),
+        provider: process.env.AI_PROVIDER === 'openai-compatible' && process.env.AI_API_KEY ? `openai-compatible:${process.env.AI_MODEL ?? 'default'}` : 'deterministic',
+        guardrails: { tools: 'none', rateLimit: '20 per 10 minutes per company', stateChanges: 'forbidden', numericValidation: 'replies may only cite supplied figures' },
+        traces: (company.aiTraces ?? []).slice(0, 10),
+      }); return
+    }
+    if (request.method === 'POST' && (action === 'advice' || action === 'dialogue')) {
+      const input = await body(request)
+      const message = String(input.message ?? input.question ?? '').slice(0, 600)
+      const character = action === 'advice' ? 'nova' : String(input.character ?? 'nova')
+      const outcome = await runDialogue(company, character, message)
+      const trace = traceDialogue(company, outcome, message)
+      appendAudit(company, 'ai_dialogue', player.id, { character: outcome.character, provider: outcome.provider, blocked: outcome.blocked, reason: outcome.reason ?? null })
+      await saveDatabase(database)
+      send(response, 200, { ...outcome, facts: factsFor(company), trace }); return
+    }
+    error(response, 404, 'AI endpoint not found.'); return
+  }
   const specialCompany = path.match(/^\/api\/companies\/([^/]+)\/(time\/advance|popups|notifications|forecast|evaluate-action|operations\/overview|products|suppliers|procurement|marketing\/campaigns|finance\/loan|finance\/repay|budget|supplier-selection|sales\/pipeline|branches|npcs|npcs\/interview|npcs\/evaluate-investor|npcs\/select-supplier|npcs\/recruit)$/)
   if (specialCompany) {
     const company = ownedCompany(database, player, specialCompany[1]); if (!company) { error(response, 404, 'Company not found.'); return }
@@ -199,9 +398,9 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     } else if (request.method === 'POST' && action === 'marketing/campaigns') {
       const input = await body(request); required(input, ['name', 'budgetKobo']); const budgetKobo = Math.round(Number(input.budgetKobo)); if (company.balanceKobo < budgetKobo) { error(response, 409, 'Company cash cannot cover this campaign.'); return } ledger(company, 'expense', budgetKobo / 100, 'Marketing campaign', 'marketing_campaign'); company.balanceKobo -= budgetKobo; company.balance = company.balanceKobo / 100; company.expensesKobo += budgetKobo; company.expenses = company.expensesKobo / 100; const campaign = { id: newId('campaign'), status: 'active', createdAt: now(), ...input, budgetKobo }; company.campaigns.push(campaign); event(company, 'marketing_campaign_started', { campaignId: campaign.id })
     } else if (request.method === 'POST' && action === 'finance/loan') {
-      const input = await body(request); const amountKobo = amountKoboFrom(input); ledger(company, 'loan', amountKobo / 100, 'Company loan', 'company_loan'); company.balance += amountKobo / 100; event(company, 'loan_received', { amountKobo })
+      const input = await body(request); const amountKobo = amountKoboFrom(input); ledger(company, 'loan', amountKobo / 100, 'Company loan', 'company_loan'); company.balance += amountKobo / 100; event(company, 'loan_received', { amountKobo }); appendAudit(company, 'loan_received', player.id, { amountKobo })
     } else if (request.method === 'POST' && action === 'finance/repay') {
-      const input = await body(request); const amount = amountKoboFrom(input); if (company.balanceKobo < amount) { error(response, 409, 'Company cash cannot cover this repayment.'); return } company.balanceKobo -= amount; company.balance = company.balanceKobo / 100; ledger(company, 'expense', amount / 100, 'Debt repayment', 'debt_repayment'); event(company, 'debt_repaid', { amountKobo: amount })
+      const input = await body(request); const amount = amountKoboFrom(input); if (company.balanceKobo < amount) { error(response, 409, 'Company cash cannot cover this repayment.'); return } company.balanceKobo -= amount; company.balance = company.balanceKobo / 100; ledger(company, 'expense', amount / 100, 'Debt repayment', 'debt_repayment'); event(company, 'debt_repaid', { amountKobo: amount }); appendAudit(company, 'debt_repaid', player.id, { amountKobo: amount })
     } else if (request.method === 'POST' && action === 'budget') {
       const input = await body(request); company.events.unshift({ id: newId('evt'), type: 'budget_updated', createdAt: now(), ...input });
     } else if (request.method === 'POST' && action === 'supplier-selection') {
@@ -234,7 +433,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       if (!level || !mission || level.levelNumber !== company.progression.currentLevel) { error(response, 409, 'Mission is not available in the current level.'); return }
       if (!company.progression.completedMissions.includes(missionId)) { company.progression.completedMissions.push(missionId); company.progression.xp += mission.reward.xp; company.progression.reputation += mission.reward.reputation }
       if (level.missions.every((item) => company.progression.completedMissions.includes(item.id)) && level.levelNumber < 75) company.progression.currentLevel = level.levelNumber + 1
-      event(company, 'mission_completed', { missionId }); await saveDatabase(database); send(response, 200, company.progression); return
+      event(company, 'mission_completed', { missionId }); appendAudit(company, 'mission_completed', player.id, { missionId, xp: company.progression.xp }); await saveDatabase(database); send(response, 200, company.progression); return
     }
     if (request.method === 'POST' && action === 'research') { company.research.push({ id: newId('research'), ...input, createdAt: now() }); event(company, 'market_research_completed'); }
     else if (request.method === 'PUT' && action === 'business-plan') { company.businessPlan = { ...input, version: Number(company.businessPlan?.version ?? 0) + 1, updatedAt: now() }; event(company, 'business_plan_saved'); }
@@ -243,11 +442,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     else if (request.method === 'POST' && action === 'compliance/applications') { company.compliance.push({ id: String(input.requirementId ?? 'sector'), status: 'approved', submittedAt: now(), ...input }); event(company, 'compliance_completed'); }
     else if (request.method === 'POST' && action === 'banking/applications') { company.bankApplication = { status: 'approved', accountId: newId('acct'), submittedAt: now(), ...input }; event(company, 'corporate_account_opened'); }
     else if (request.method === 'POST' && action === 'founder-contributions') { const amount = amountKobo(input); transferFromFounder(player, company, amount, player.id, 'Founder contribution', request.headers['idempotency-key']?.toString()); company.balance = company.balanceKobo / 100; event(company, 'founder_contribution_recorded', { amountKobo: amount }); }
-    else if (request.method === 'POST' && action === 'job-openings') { required(input, ['name', 'role', 'salaryKobo']); const salaryKobo = Math.round(Number(input.salaryKobo)); if (company.balanceKobo < salaryKobo * 3) { error(response, 409, 'Hiring would leave less than three months of payroll runway.'); return } company.employees.push({ id: newId('emp'), status: 'hired', salaryKobo, hiredAt: now(), ...input }); event(company, 'employee_hired'); }
+    else if (request.method === 'POST' && action === 'job-openings') { required(input, ['name', 'role', 'salaryKobo']); const salaryKobo = Math.round(Number(input.salaryKobo)); if (company.balanceKobo < salaryKobo * 3) { error(response, 409, 'Hiring would leave less than three months of payroll runway.'); return } company.employees.push({ id: newId('emp'), status: 'hired', salaryKobo, hiredAt: now(), ...input }); event(company, 'employee_hired'); appendAudit(company, 'employee_hired', player.id, { salaryKobo, role: String(input.role ?? '') }); }
     else if (request.method === 'PUT' && action === 'brand') { company.brand = { ...input, updatedAt: now() }; event(company, 'brand_profile_saved'); }
     else if (request.method === 'POST' && action === 'meetings') { company.meetings.push({ id: newId('meeting'), heldAt: now(), ...input }); event(company, 'board_meeting_completed'); }
     else if (request.method === 'POST' && action === 'launch') { if (!company.registration || !company.bankApplication) throw new Error('Registration and corporate banking must be complete before launch.'); company.status = 'launched'; event(company, 'business_launched'); }
-    else if (request.method === 'POST' && action === 'orders') { required(input, ['customer']); const idempotencyKey = request.headers['idempotency-key']?.toString(); if (idempotencyKey && company.transactions.some((transaction) => transaction.idempotencyKey === idempotencyKey)) { send(response, 200, company); return } const product = input.productId ? company.products.find((item) => item.id === input.productId) : undefined; const quantity = Math.max(1, Math.floor(Number(input.quantity ?? 1))); if (product) { const demand = demandFor(company, product, quantity); consumeStock(company, String(input.productId), demand) } const amountKobo = Math.round(Number(input.amountKobo ?? (product ? Number(product.priceKobo) * quantity : Number(input.amount ?? 0) * 100))); if (amountKobo <= 0) { error(response, 400, 'Order amount must be greater than zero.'); return } ledger(company, 'sale', amountKobo / 100, `Sale to ${input.customer}`, 'customer_order'); company.transactions[0].idempotencyKey = idempotencyKey; company.balance += amountKobo / 100; company.revenue += amountKobo / 100; company.orders.push({ id: newId('order'), status: 'paid', paymentStatus: 'paid', amountKobo, quantity, createdAt: now(), ...input }); event(company, 'sale_processed', { amountKobo, quantity }); }
+    else if (request.method === 'POST' && action === 'orders') { required(input, ['customer']); const idempotencyKey = request.headers['idempotency-key']?.toString(); if (idempotencyKey && company.transactions.some((transaction) => transaction.idempotencyKey === idempotencyKey)) { send(response, 200, company); return } const product = input.productId ? company.products.find((item) => item.id === input.productId) : undefined; const quantity = Math.max(1, Math.floor(Number(input.quantity ?? 1))); if (product) { const demand = demandFor(company, product, quantity); consumeStock(company, String(input.productId), demand) } const amountKobo = Math.round(Number(input.amountKobo ?? (product ? Number(product.priceKobo) * quantity : Number(input.amount ?? 0) * 100))); if (amountKobo <= 0) { error(response, 400, 'Order amount must be greater than zero.'); return } ledger(company, 'sale', amountKobo / 100, `Sale to ${input.customer}`, 'customer_order'); company.transactions[0].idempotencyKey = idempotencyKey; company.balance += amountKobo / 100; company.revenue += amountKobo / 100; company.orders.push({ id: newId('order'), status: 'paid', paymentStatus: 'paid', amountKobo, quantity, createdAt: now(), ...input }); event(company, 'sale_processed', { amountKobo, quantity }); appendAudit(company, 'sale_recorded', player.id, { amountKobo, quantity }); }
     else if (request.method === 'POST' && action === 'expenses') { const amount = Number(input.amount); ledger(company, 'expense', amount, String(input.description ?? 'Operating expense'), 'operating_expense'); company.balance -= amount; company.expenses += amount; event(company, 'expense_recorded', { amount }); }
     else { error(response, 404, 'Company endpoint not found.'); return }
     await saveDatabase(database); send(response, 200, company); return
@@ -261,7 +460,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     if (action === 'requests') { required(input, ['amount', 'contributor']); const amount = Number(input.amount); company.fundingRequests.push({ id: newId('fund'), status: 'accepted', createdAt: now(), ...input }); ledger(company, 'funding', amount, 'Family and friends contribution', 'funding_request'); company.transactions[0].idempotencyKey = idempotencyKey; company.balance += amount }
     else if (action === 'pitch-decks') { company.pitchDeck = { id: newId('deck'), createdAt: now(), ...input } }
     else if (action === 'applications') { company.investorApplications.push({ id: newId('application'), status: 'under_review', createdAt: now(), ...input }); }
-    else if (action === 'offers' && fundingMatch[2]) { const amount = Number(input.amount); company.offers.push({ id: fundingMatch[2], status: 'accepted', createdAt: now(), ...input }); ledger(company, 'investment', amount, 'Pre-seed investment', 'investment_agreement'); company.balance += amount; company.ownership.push({ holder: String(input.investor ?? 'investor'), shares: Number(input.equity ?? 10) }); company.ownership[0].shares -= Number(input.equity ?? 10) }
+    else if (action === 'offers' && fundingMatch[2]) { const amount = Number(input.amount); company.offers.push({ id: fundingMatch[2], status: 'accepted', createdAt: now(), ...input }); ledger(company, 'investment', amount, 'Pre-seed investment', 'investment_agreement'); company.balance += amount; company.ownership.push({ holder: String(input.investor ?? 'investor'), shares: Number(input.equity ?? 10) }); company.ownership[0].shares -= Number(input.equity ?? 10); appendAudit(company, 'investment_accepted', player.id, { amount, equity: Number(input.equity ?? 10) }) }
     else { error(response, 404, 'Funding endpoint not found.'); return }
     event(company, `funding_${action}_completed`); await saveDatabase(database); send(response, 200, company); return
   }
@@ -272,7 +471,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     if (!level || !mission || level.levelNumber !== company.progression.currentLevel) { error(response, 409, 'Mission is not available in the current level.'); return }
     if (!company.progression.completedMissions.includes(missionId)) { company.progression.completedMissions.push(missionId); company.progression.xp += mission.reward.xp; company.progression.reputation += mission.reward.reputation }
     const completed = level.missions.every((item) => company.progression.completedMissions.includes(item.id)); if (completed && level.levelNumber < 75) company.progression.currentLevel = level.levelNumber + 1
-    event(company, 'mission_completed', { missionId }); await saveDatabase(database); send(response, 200, company.progression); return
+    event(company, 'mission_completed', { missionId }); appendAudit(company, 'mission_completed', player.id, { missionId, xp: company.progression.xp }); await saveDatabase(database); send(response, 200, company.progression); return
   }
   if (request.method === 'GET' && /^\/api\/companies\/[^/]+\/financial-reports$/.test(path)) { const company = ownedCompany(database, player, path.split('/')[3]); if (!company) { error(response, 404, 'Company not found.'); return } send(response, 200, { revenue: company.revenue, expenses: company.expenses, balance: company.balance, balanceKobo: company.balanceKobo, revenueKobo: company.revenueKobo, expensesKobo: company.expensesKobo, net: company.revenue - company.expenses, breakEven: breakEven(company), transactions: company.transactions, journal: company.journal }); return }
   if (path.startsWith('/api/admin/')) {
@@ -290,4 +489,4 @@ const database = await loadDatabase()
 database.marketplace = seedMarketplace(database.marketplace)
 await saveDatabase(database)
 const server = createServer((request, response) => { handle(request, response, database).catch((caught: unknown) => error(response, 400, caught instanceof Error ? caught.message : 'Request failed.')) })
-server.listen(port, '127.0.0.1', () => console.log(`BUSINESSLIFE API listening on http://127.0.0.1:${port}`))
+server.listen(port, host, () => console.log(`BUSINESSLIFE API listening on http://${host}:${port}`))

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import Landing from './pages/Landing'
 import Play from './pages/Play'
+import Lecturer from './pages/Lecturer'
 
 function ScrollManager() {
   const { pathname, hash } = useLocation()
@@ -27,6 +28,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/play" element={<Play />} />
+        <Route path="/lecturer" element={<Lecturer />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

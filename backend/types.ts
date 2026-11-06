@@ -1,10 +1,13 @@
 export type Id = string
 
+export type PlayerRole = 'learner' | 'instructor' | 'admin'
+
 export interface Player {
   id: Id
   name: string
   createdAt: string
   wallet: number
+  role: PlayerRole
   progression: { xp: number; reputation: number }
   firstName?: string
   lastName?: string
@@ -198,6 +201,10 @@ export interface Company {
   conversations: Conversation[]
   messages: Message[]
   reputationProfile: ReputationProfile
+  authority?: AuthorityState
+  authorityViolations?: AuthorityViolation[]
+  auditChain: AuditRecord[]
+  aiTraces: AiTrace[]
 }
 
 export interface CityState {
@@ -213,6 +220,68 @@ export interface ClassRoom {
   name: string
   studentIds: Id[]
   scenario: Record<string, unknown> | null
+  createdAt: string
+  records?: ClassroomRecord[]
+}
+
+export interface ClassroomRecord {
+  studentId: Id
+  grade?: number
+  feedback?: string
+  gradedBy?: Id
+  gradedAt?: string
+  resetAt?: string
+  assignedAt?: string
+}
+
+export interface AuthorityViolation {
+  code: string
+  field: string
+  message: string
+  clientValue?: number | string | null
+  canonicalValue?: number | string | null
+  at: string
+}
+
+export interface AuthorityState {
+  version: number
+  score: number
+  month: number
+  day: number
+  cashKobo: number
+  customers: number
+  revenueKobo: number
+  expensesKobo: number
+  valuationKobo: number
+  priceNaira?: number
+  quality?: number
+  reputation?: number
+  morale?: number
+  teamSkill?: number
+  status: string
+  commits: number
+  updatedAt: string
+  lastViolationAt?: string
+}
+
+export interface AuditRecord {
+  seq: number
+  at: string
+  type: string
+  actor: string
+  payload: Record<string, unknown>
+  prevHash: string
+  hash: string
+}
+
+export interface AiTrace {
+  id: Id
+  character: string
+  provider: string
+  blocked: boolean
+  reason?: string
+  latencyMs: number
+  promptHash: string
   createdAt: string
 }
 

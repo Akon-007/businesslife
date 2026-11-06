@@ -25,7 +25,11 @@ const empty: Database = {
 export async function loadDatabase(): Promise<Database> {
   try {
     const saved = JSON.parse(await readFile(file, 'utf8')) as Partial<Database>
-    return { ...structuredClone(empty), ...saved, city: { ...structuredClone(empty.city), ...(saved.city ?? {}) }, idempotency: saved.idempotency ?? [], classes: saved.classes ?? [], npcs: saved.npcs ?? [], marketplace: { ...structuredClone(empty.marketplace), ...(saved.marketplace ?? {}) } }
+    const merged = { ...structuredClone(empty), ...saved, city: { ...structuredClone(empty.city), ...(saved.city ?? {}) }, idempotency: saved.idempotency ?? [], classes: saved.classes ?? [], npcs: saved.npcs ?? [], marketplace: { ...structuredClone(empty.marketplace), ...(saved.marketplace ?? {}) } }
+    merged.players = (merged.players ?? []).map((player) => ({ ...player, role: player.role ?? 'learner' }))
+    merged.companies = (merged.companies ?? []).map((company) => ({ ...company, auditChain: company.auditChain ?? [], aiTraces: company.aiTraces ?? [], authorityViolations: company.authorityViolations ?? [] }))
+    merged.classes = (merged.classes ?? []).map((classroom) => ({ ...classroom, records: classroom.records ?? [] }))
+    return merged
   } catch {
     return structuredClone(empty)
   }

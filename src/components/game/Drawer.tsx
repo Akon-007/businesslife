@@ -33,6 +33,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useGame } from '../../game/store'
+import { askAdvisor, type AiReply } from '../../lib/api'
 import {
   buildInsights,
   estimateChurn,
@@ -116,7 +117,7 @@ export const PANEL_META: Record<PanelId, { title: string; kicker: string; descri
   },
   nova: {
     title: 'Nova',
-    kicker: 'AI advisor',
+    kicker: 'Advisor',
     description: 'A coaching layer over your numbers. Plain English, no financial advice.',
     icon: Compass,
     color: '#0b8550',
@@ -1546,6 +1547,64 @@ function JourneyPanel() {
   )
 }
 
+function AskNova({ game }: { game: ReturnType<typeof useCurrentGame> }) {
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState<AiReply | null>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+
+  const send = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!game.backendCompanyId) {
+      setError('Connect to the server before asking — Nova reads authoritative figures.')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      setAnswer(await askAdvisor(game.backendCompanyId, question.trim()))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Nova is unavailable right now.')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <PanelSection title="Ask Nova" hint="Runs through the AI gateway. No tool can change your numbers.">
+      <form onSubmit={send} className="flex gap-2">
+        <input
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          maxLength={280}
+          placeholder="Can I afford another hire?"
+          aria-label="Ask Nova a question"
+          className="h-10 w-full rounded-xl border border-line bg-white px-3 text-[11.5px] text-ink outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-10 shrink-0 rounded-xl bg-ink px-3 text-[11px] font-bold text-lime transition hover:bg-ink-800 disabled:opacity-50"
+        >
+          {pending ? 'Thinking' : 'Ask'}
+        </button>
+      </form>
+      {error ? <p className="mt-2 rounded-xl bg-coral-soft px-3 py-2 text-[10.5px] font-semibold text-coral">{error}</p> : null}
+      {answer ? (
+        <div className={clsx('mt-2 rounded-2xl p-3 ring-1', answer.blocked ? 'bg-gold-soft ring-gold/40' : 'bg-brand-50 ring-brand-100')}>
+          <p className="text-[11px] leading-relaxed text-ink-700">{answer.reply}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[8.5px] font-bold uppercase tracking-[0.08em]">
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-ink-500">{answer.provider}</span>
+            {answer.blocked ? <span className="rounded-full bg-coral/15 px-2 py-0.5 text-coral">guardrail · {answer.reason}</span> : null}
+            <span className="rounded-full bg-white/60 px-2 py-0.5 text-ink-400">{answer.grounded.length} grounded figures</span>
+            <span className="rounded-full bg-white/60 px-2 py-0.5 text-ink-400">{answer.rateRemaining} left this window</span>
+          </div>
+        </div>
+      ) : null}
+    </PanelSection>
+  )
+}
+
 function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
   const game = useCurrentGame()
   const industry = industryById(game.industry)
@@ -1565,8 +1624,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
             <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-ink bg-brand-500" />
           </span>
           <div>
-            <p className="font-display text-[16px] font-semibold">Nova · AI chief of staff</p>
-            <p className="text-[10px] text-white/45">Reads your numbers, not your pitch</p>
+            <p className="font-display text-[16px] font-semibold">Nova · Chief of staff</p>
+            <p className="text-[10px] text-white/45">Answers from server-verified numbers only</p>
           </div>
         </div>
         <div className="mt-3 space-y-1.5">
@@ -1577,6 +1636,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
           ))}
         </div>
       </section>
+
+      <AskNova game={game} />
 
       <PanelSection title="The numbers Nova used">
         <div className="grid grid-cols-2 gap-2">

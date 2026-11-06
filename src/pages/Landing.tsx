@@ -88,7 +88,7 @@ function Hero() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-500 opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-brand-500" />
               </span>
-              AI-powered business simulation
+              Rules-based business simulation · AI-gateway advisor
             </div>
 
             <h1 className="mt-5 font-display text-[42px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[56px] lg:text-[64px]">
@@ -264,7 +264,7 @@ const STEPS = [
   {
     number: '03',
     title: 'Read the story',
-    copy: 'A monthly report explains what moved and why. Nova, your AI advisor, flags the constraint. Thirty-six months later, you get a scorecard you earned.',
+    copy: 'A monthly report explains what moved and why. Nova, your advisor, flags the constraint — she answers only from server-verified numbers, through a pluggable AI gateway. Thirty-six months later, you get a scorecard you earned.',
     icon: BookOpenText,
     visual: <ReportPreview />,
   },
@@ -643,7 +643,7 @@ function AdvisorVisual() {
           <Compass className="size-4" />
         </span>
         <div>
-          <p className="text-[11px] font-bold">Nova · AI chief of staff</p>
+          <p className="text-[11px] font-bold">Nova · Chief of staff</p>
           <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Reads your monthly numbers</p>
         </div>
         <span className="ml-auto flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[8.5px] font-bold text-lime">
@@ -982,8 +982,8 @@ const FAQS = [
     a: 'Yes. Cohort runs, facilitator guides and debrief reports are built for business schools, universities, accelerators and corporate learning teams. Reach out and we will set up a walkthrough for your programme.',
   },
   {
-    q: 'Is the AI advisor giving me financial advice?',
-    a: 'No. Nova is a coaching layer over the simulation. It points out patterns in your own numbers — runway, churn, capacity, morale — and suggests what to examine. BUSINESSLIFE is an educational simulation, not financial, legal or investment advice.',
+    q: 'Is Nova a real AI, and is she giving me financial advice?',
+    a: 'Nova is an advisor layer over a deterministic simulation: by default she is rule-based and runs with no external model, and the platform can be pointed at any OpenAI-compatible provider through its AI gateway. Either way she may only cite figures from your server-verified company record, she has no tools that can change game state, and she cannot reveal hidden data. BUSINESSLIFE is an educational simulation, not financial, legal or investment advice.',
   },
   {
     q: 'Is my company saved?',

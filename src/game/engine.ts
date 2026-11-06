@@ -441,25 +441,58 @@ export function newCustomersEstimate(state: GameState) {
   )
 }
 
+/**
+ * Scoring v2 (mirrors backend/authority.ts `scoreSnapshot`).
+ *
+ * Every component is normalised against a stated benchmark and capped, so the
+ * score responds to operating evidence instead of saturating on valuation.
+ * The server recomputes this same formula and is the authority for the score.
+ */
 function computeScore(state: GameState) {
-  const metrics = {
-    arr: state.customers * state.price * 12,
+  const last = state.history[state.history.length - 1]
+  const revenue = last?.revenue ?? state.customers * state.price
+  const costs = last?.costs ?? sum(state.team.map((member) => member.salary)) + (state.marketingSpend ?? 0) + (state.productSpend ?? 0) + (state.trainingSpend ?? 0) + state.team.length * 180
+  const burn = Math.max(0, costs - revenue)
+  const runway = burn > 0 ? state.cash / burn : 12
+  const teamSkill = sum(state.team.map((member) => member.skill * (member.level ?? 1)))
+  const debt = Math.max(0, state.debt ?? 0)
+  const raw =
+    clamp(revenue / 250_000, 0, 1) * 30 +
+    clamp(state.customers / 500, 0, 1) * 15 +
+    clamp(runway / 12, 0, 1) * 15 +
+    (clamp(state.quality, 0, 100) / 100) * 10 +
+    (clamp(state.reputation, 0, 100) / 100) * 10 +
+    clamp(state.valuation / 10_000_000, 0, 1) * 10 +
+    clamp(teamSkill / 100, 0, 1) * 5 +
+    (clamp(state.founderEquity ?? 100, 0, 100) / 100) * 5 -
+    clamp(debt / Math.max(1, revenue * 12), 0, 1) * 10
+  return Math.max(0, Math.round(clamp(raw, 0, 100) * 10) / 10)
+}
+
+/** Inputs the server needs to recompute and protect the score. */
+export function authorityPayload(state: GameState) {
+  const last = state.history[state.history.length - 1]
+  const revenue = last?.revenue ?? state.customers * state.price
+  const costs = last?.costs ?? sum(state.team.map((member) => member.salary)) + (state.marketingSpend ?? 0) + (state.productSpend ?? 0) + (state.trainingSpend ?? 0) + state.team.length * 180
+  return {
+    month: state.month,
+    day: state.day,
+    cashKobo: Math.round(state.cash * 100),
+    customers: Math.round(state.customers),
+    priceNaira: state.price,
+    revenueKobo: Math.round(revenue * 100),
+    expensesKobo: Math.round(costs * 100),
+    valuationKobo: Math.round(state.valuation * 100),
+    quality: state.quality,
+    reputation: state.reputation,
+    morale: state.morale,
+    teamSize: state.team.length,
+    teamSkill: Math.round(sum(state.team.map((member) => member.skill * (member.level ?? 1)))),
+    inventory: state.inventory ?? 0,
+    debtKobo: Math.round(Math.max(0, state.debt ?? 0) * 100),
+    founderEquity: state.founderEquity ?? 100,
+    status: state.status,
   }
-  return Math.max(
-    0,
-    Math.round(
-      state.valuation / 1_500 +
-        metrics.arr / 500 +
-        state.customers * 0.8 +
-        state.reputation * 14 +
-        state.quality * 10 +
-        state.cash / 2_000 +
-        state.founderEquity * 1.2 -
-        state.debt / 800 +
-        sum(state.team.map((member) => member.skill)) * 7 +
-        state.month * 25,
-    ),
-  )
 }
 
 export function applyEffects(state: GameState, effects: Effects): GameState {
@@ -1278,8 +1311,7 @@ export function getGrade(score: number) {
 }
 
 export function performanceScore(state: GameState) {
-  const raw = computeScore(state)
-  return Math.round(clamp(raw / 70, 0, 100))
+  return Math.round(clamp(computeScore(state), 0, 100))
 }
 
 export const ALL_INDUSTRIES = INDUSTRIES
@@ -1299,6 +1331,7 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
   return {
     ...game,
     version: SAVE_VERSION,
+    authority: game.authority ?? undefined,
     beginner: migratedProgress,
     day: game.day ?? ((game.month ?? 0) * DAYS_PER_MONTH + 1),
     firstName: game.firstName ?? game.founder?.split(' ')[0] ?? 'Founder',

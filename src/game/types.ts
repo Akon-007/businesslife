@@ -248,8 +248,19 @@ export interface Snapshot {
   quality: number
 }
 
+export interface ServerAuthority {
+  score: number
+  month: number
+  cash: number
+  commits: number
+  updatedAt: string
+  integrity: 'verified' | 'flagged' | 'unknown'
+  readOnly: boolean
+}
+
 export interface GameState {
   backendCompanyId?: string
+  authority?: ServerAuthority
   version: number
   status: GameStatus
   endedReason?: string

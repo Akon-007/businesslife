@@ -128,6 +128,7 @@ export default function Play() {
 function GameBoard({ game }: { game: GameState }) {
   const advance = useGame((state) => state.advance)
   const reset = useGame((state) => state.reset)
+  const hydrateAuthority = useGame((state) => state.hydrateAuthority)
   const resolve = useGame((state) => state.resolve)
   const dismissReport = useGame((state) => state.dismissReport)
   const notify = useGame((state) => state.notify)
@@ -157,6 +158,10 @@ function GameBoard({ game }: { game: GameState }) {
   const runEnded = game.status !== 'active'
   const industry = industryById(game.industry)
   const openBranchCount = (game.branches ?? []).filter((branch) => branch.openedMonth !== null).length
+
+  useEffect(() => {
+    void hydrateAuthority()
+  }, [game.backendCompanyId, hydrateAuthority])
 
   useEffect(() => {
     if (game.pendingCrisis && !game.lastReport && !crisisView) {
@@ -424,6 +429,13 @@ function TopBar({
           <HudPill label="MRR" value={money(metrics.mrr, { compact: true })} />
           <HudPill label="Value" value={money(game.valuation, { compact: true })} />
           <HudPill label="Runway" value={`${runway} mo`} tone={runwayTone} />
+          {game.authority ? (
+            <HudPill
+              label="Score"
+              value={`${game.authority.score}`}
+              tone={game.authority.integrity === 'flagged' ? 'warn' : 'good'}
+            />
+          ) : null}
           <div className="hidden xl:block">
             <HudPill label="Climate" value={game.economy.label} tone={climateTone} />
           </div>
@@ -458,6 +470,7 @@ function TopBar({
         <HudChip label="MRR" value={money(metrics.mrr, { compact: true })} />
         <HudChip label="Value" value={money(game.valuation, { compact: true })} />
         <HudChip label="Runway" value={`${runway}mo`} tone={runwayTone} />
+        {game.authority ? <HudChip label="Score" value={`${game.authority.score}`} tone={game.authority.integrity === 'flagged' ? 'warn' : 'good'} /> : null}
         <HudChip label="Climate" value={game.economy.label} tone={climateTone} />
         <HudChip label="Customers" value={number(game.customers)} />
         <HudChip label="Team" value={number(game.team.length)} />
@@ -627,7 +640,7 @@ function NovaCard({
         </span>
         <div>
           <p className="text-[11.5px] font-bold text-ink">Nova</p>
-          <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">AI chief of staff</p>
+          <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">Advisor · grounded</p>
         </div>
         <span className="ml-auto flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[8px] font-bold text-brand-700">
           <span className="size-1 rounded-full bg-brand-500 blink" />
