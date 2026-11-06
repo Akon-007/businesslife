@@ -50,6 +50,7 @@ GitHub Actions runs the same suite on every push and pull request
 | Supplier bills, payables, P&L / balance sheet / cash flow | `src/game/accounting.ts` |
 | Finance centre (statements, invoices, bills, what-if) | `src/components/game/FinancePanel.tsx` |
 | Marketing channels, attribution, CAC/LTV | `src/game/marketing.ts`, `src/components/game/MarketingPanel.tsx` |
+| Operations: purchase orders, lead times, capacity, returns | `src/game/supply.ts`, `src/components/game/OperationsPanel.tsx` |
 | Sales funnel: leads, qualification, quotes, retainers | `src/game/sales.ts`, `src/components/game/SalesFunnel.tsx` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |

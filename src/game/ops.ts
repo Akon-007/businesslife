@@ -6,6 +6,9 @@
  */
 import {
   acceptOffer,
+  cancelOrder,
+  investCapacity,
+  placeOrder,
   acknowledgeMissionEvidence,
   advanceDay,
   declineOffers,
@@ -16,6 +19,7 @@ import {
   openBranch,
   payAllBills,
   payBill,
+  expediteOrder,
   pushDeal,
   qualifyLead,
   refreshCandidates,
@@ -65,6 +69,10 @@ export const OP_TYPES: readonly GameOpType[] = [
   'qualifyLead',
   'sendQuote',
   'dropLead',
+  'placeOrder',
+  'expediteOrder',
+  'cancelOrder',
+  'investCapacity',
 ] as const
 
 /** Numeric ceilings for journal arguments. Anything outside is rejected. */
@@ -73,6 +81,10 @@ const LIMITS: Record<string, { min: number; max: number }> = {
   price: { min: 0, max: 5_000_000 },
   share: { min: 0, max: 1 },
   months: { min: 0, max: 12 },
+  /** Quote discounts are capped at 30% everywhere. */
+  discount: { min: 0, max: 0.3 },
+  /** Purchase orders are in months of cover. */
+  cover: { min: 0, max: 4 },
 }
 
 /** Operations that are meaningless without a target id. */
@@ -90,6 +102,8 @@ const REQUIRED_IDS: Partial<Record<GameOpType, readonly string[]>> = {
   qualifyLead: ['leadId'],
   sendQuote: ['leadId'],
   dropLead: ['leadId'],
+  expediteOrder: ['orderId'],
+  cancelOrder: ['orderId'],
 }
 
 const ID_MAX = 80
@@ -108,7 +122,7 @@ export function assertOp(value: unknown, index = 0): GameOp {
   const args = (raw.args ?? {}) as Record<string, unknown>
   if (typeof args !== 'object' || Array.isArray(args)) throw new InvalidOpError(`op ${index} has invalid args`)
 
-  const numericKeys: Array<keyof typeof LIMITS> = ['amount', 'price', 'months', 'share']
+  const numericKeys: Array<keyof typeof LIMITS> = ['amount', 'price', 'months', 'share', 'discount', 'cover']
   for (const key of numericKeys) {
     if (args[key] === undefined) continue
     const number = Number(args[key])
@@ -118,7 +132,7 @@ export function assertOp(value: unknown, index = 0): GameOp {
     }
   }
 
-  const idKeys = ['optionId', 'candidateId', 'employeeId', 'offerId', 'supplierId', 'dealId', 'branchId', 'billId', 'channelId', 'leadId'] as const
+  const idKeys = ['optionId', 'candidateId', 'employeeId', 'offerId', 'supplierId', 'dealId', 'branchId', 'billId', 'channelId', 'leadId', 'orderId'] as const
   for (const key of idKeys) {
     if (args[key] === undefined) continue
     const id = args[key]
@@ -234,6 +248,14 @@ export function applyOp(state: GameState, op: GameOp): GameState {
       return sendQuote(state, String(args.leadId ?? ''), Number(args.discount ?? 0))
     case 'dropLead':
       return dropLead(state, String(args.leadId ?? ''))
+    case 'placeOrder':
+      return placeOrder(state, Number(args.cover ?? 0))
+    case 'expediteOrder':
+      return expediteOrder(state, String(args.orderId ?? ''))
+    case 'cancelOrder':
+      return cancelOrder(state, String(args.orderId ?? ''))
+    case 'investCapacity':
+      return investCapacity(state, Number(args.amount ?? 0))
     default:
       return state
   }

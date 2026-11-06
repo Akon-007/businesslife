@@ -75,6 +75,25 @@ async function main() {
   })
   check('a funnel decision without a lead id is rejected', funnelMissingId.status === 400, `status ${funnelMissingId.status}`)
 
+  const orderDecision = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'place', cover: 1.5 },
+  })
+  check('a purchase order decision is recorded', orderDecision.status === 200, `status ${orderDecision.status}`)
+  const badOrderAction = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'teleport' },
+  })
+  check('an unknown operations action is rejected', badOrderAction.status === 400, `status ${badOrderAction.status}`)
+  const expediteWithoutId = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'expedite' },
+  })
+  check('expediting without an order id is rejected', expediteWithoutId.status === 400, `status ${expediteWithoutId.status}`)
+
   const initialRun = await call(`/api/companies/${companyId}/run`, { token: learner.token })
   check('run state readable', initialRun.status === 200)
   check('initial score is server-derived zero', initialRun.body?.score === 0, String(initialRun.body?.score))

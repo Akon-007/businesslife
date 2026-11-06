@@ -154,6 +154,26 @@ export interface Contract {
   discount: number
 }
 
+export type OrderStatus = 'in_transit' | 'delivered' | 'cancelled'
+
+/** A purchase order: how much cover was bought, and when it is due. */
+export interface PurchaseOrder {
+  id: string
+  supplierId: string
+  /** Months of stock cover on the order. */
+  cover: number
+  status: OrderStatus
+  orderedMonth: number
+  /** What the supplier promised. */
+  promisedMonth: number
+  /** What the delivery date became once reliability was priced in. */
+  expectedMonth: number
+  deliveredMonth: number | null
+  /** Months beyond the promise, once delivered. */
+  lateMonths: number
+  note?: string
+}
+
 export interface Competitor {
   id: string
   name: string
@@ -473,6 +493,10 @@ export type GameOpName =
   | 'qualifyLead'
   | 'sendQuote'
   | 'dropLead'
+  | 'placeOrder'
+  | 'expediteOrder'
+  | 'cancelOrder'
+  | 'investCapacity'
 
 /**
  * One recorded decision. The journal is append-only: replaying the seed plus
@@ -570,6 +594,8 @@ export interface GameState {
   /** B2B funnel: scouted accounts, their quotes and the retainers that came of them. */
   leads: Lead[]
   contracts: Contract[]
+  /** Purchase orders in flight — stock arrives from these, not from a formula. */
+  orders: PurchaseOrder[]
   competitors: Competitor[]
   economy: EconomyState
   economyOffset: number
@@ -628,6 +654,13 @@ export interface MonthReport {
   contractsWon: number
   /** Retainers still paying at the end of the month. */
   contractsActive: number
+  /** Operations: what the business could serve, and what it could not. */
+  capacity: number
+  unserved: number
+  /** Refunds on defective or late deliveries (cash out, operating expense). */
+  returns: number
+  ordersInTransit: number
+  lateDeliveries: number
 }
 
 export interface GameMetrics {

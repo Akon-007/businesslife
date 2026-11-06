@@ -545,3 +545,50 @@ choice, quote odds, live-retainer terms with expiry bars, and the recently close
 Verification: `verify:centres` +31 funnel checks (`scoreLead`, `quoteChance`, quote maths, qualify/quote/drop,
 retainer payout and expiry, report and statement integration, journal replay), `verify:render` +4 per
 industry, `verify:api` +2 live endpoint checks.
+
+
+### 9.15 Operations: purchase orders, lead times, capacity and returns — **implemented**
+
+§6.2 and §6.9 were inventory cover, a restock slider and a supplier picker. Stock appeared from an invisible
+formula (`incoming = restockMonths × reliability`) and nothing limited how many customers the business could
+physically serve. `src/game/supply.ts` replaces that with three real constraints.
+
+| Constraint | Rule |
+|---|---|
+| Purchase orders | Stock now arrives from an order. Each close delivers what is due, then places the policy order; a manual order can be placed for 0.5–4 months of cover (8 in flight max) |
+| Lead times | Arrival = ordered month + supplier lead time + 1. Suppliers slip a month with probability `1 − reliability` (capped 35%); a slip is shown as "at risk" before it costs a stockout |
+| Expedite | Pay a 12% premium to pull a delivery one month forward (memoed to `flows.expenses`) |
+| Capacity | 220 + 30/teammate + ₦1 per ₦20k of fixed assets + 40/branch customer slots per month. Demand above capacity is unserved: that share of revenue is lost and the overflow churns 15% faster |
+| Returns | Defect rate = 1.2% + `max(0, 3 − supplier quality) × 0.8pp` + 2pp per unit of overload + reliability penalty − quality credit, capped at 14%. Refunds are cash out, booked as an operating expense |
+| Capacity investment | Capex of ₦20k per slot, capitalised to fixed assets and depreciated like any other asset |
+
+**Balancing (measured, not guessed).** A first cut (base 34 slots, 10 per head) put every run ~100 slots
+short from month 1: revenue fell to a fifth and net profit to −₦10k/month. The constraint now starts above the
+opening customer base and only bites as demand grows — a passive 12-month run keeps its previous economics
+(net ≈ +₦1k/month, revenue ≈ ₦16k), while a growth run hits the wall and has to hire, branch or buy slots.
+Returns were similarly mis-scaled: reading supplier quality (−5…+5) directly as percentage points produced
+10% refunds on every cheap supplier; it is now a nudge (1–5 points), 1–2% of revenue in normal play.
+
+**Two real defects found while verifying:**
+
+1. **The legit-play suite never actually replayed.** It called `advanceMonth` directly, so no `advanceDay`
+   ops were journaled; the server's replay guard (`journal.length`) skipped replay entirely and fell back to
+   scoring rounded canonical values. That fallback disagreed with the client by ±1 point on some seeds —
+   which is what surfaced the problem. The suite now plays the way the store plays (one `advanceDay` op per
+   day, `resolveCrisis` ops), and asserts the server returned `replay: { status: 'match', ops: 182 }`.
+   Engine-to-engine parity is now exact across runs.
+2. **The statements suite compared cash after post-close events.** Micro-events run after the statements are
+   built and crises are answered between closes; both move cash and are memoed in `flows` for the next
+   statement. The old assertion happened to pass because no such event had ever hit the final month. It is
+   now a reconciliation: balance-sheet cash = engine cash − memoed between-close movements, which is stricter
+   and caught the refund flow on its first run.
+
+**Wiring.** `placeOrder`, `expediteOrder`, `cancelOrder` and `investCapacity` are journaled decisions
+(`orderId`/`cover` validated, cover capped at 4) and re-executed by `PUT /run`. `POST
+/api/companies/:id/operations/orders` records the decision live: 400 on an unknown action and on an expedite
+without an order id (both covered by `verify:api`).
+
+**Verification.** `verify:centres` +42 operations checks (order promises, slips, delivery, lateness, expedite,
+cancellation, capacity maths, defect scaling, the close-level consequences of overload, capex accounting,
+journal replay, op validation) · `verify:render` +4 per industry (operations panel, overload copy, no leaked
+values) · `verify:api` +3 live checks · statements, determinism, replay and legit-play all green.

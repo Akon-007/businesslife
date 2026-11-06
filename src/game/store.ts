@@ -65,6 +65,10 @@ interface GameStore {
   qualifyLead: (leadId: string) => void
   sendQuote: (leadId: string, discount: number) => void
   dropLead: (leadId: string) => void
+  placeOrder: (cover: number) => void
+  expediteOrder: (orderId: string) => void
+  cancelOrder: (orderId: string) => void
+  investCapacity: (amount: number) => void
   openBranch: (branchId: string) => void
   setChannelShare: (channelId: string, share: number) => void
   setMixPreset: (mix: Record<string, number>) => void
@@ -467,6 +471,43 @@ export const useGame = create<GameStore>()(
         set({ game: withOp(game, { op: 'sendQuote', args: { leadId, discount } }) })
         void syncCompanyAction(game.backendCompanyId, 'sales/funnel', { leadId, action: 'quote', value, discount }, `lead-quote-${leadId}-${game.month}`).catch(() => undefined)
         get().notify(`Quote sent to ${lead.company}: ${money(value)}/month.`, 'good')
+      },
+      placeOrder: (cover) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const before = (game.orders ?? []).length
+        set({ game: withOp(game, { op: 'placeOrder', args: { cover } }) })
+        void syncCompanyAction(game.backendCompanyId, 'operations/orders', { action: 'place', cover }, `po-${game.month}-${before}`).catch(() => undefined)
+        get().notify(`Order placed for ${cover.toFixed(1)} months of stock cover.`, 'good')
+      },
+      expediteOrder: (orderId) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const before = game.cash
+        set({ game: withOp(game, { op: 'expediteOrder', args: { orderId } }) })
+        const after = get().game?.cash ?? before
+        if (after === before) {
+          get().notify('That delivery cannot be expedited any further.', 'bad')
+          return
+        }
+        void syncCompanyAction(game.backendCompanyId, 'operations/orders', { action: 'expedite', orderId }, `po-expedite-${orderId}`).catch(() => undefined)
+        get().notify(`Delivery expedited for ${money(before - after)}.`, 'neutral')
+      },
+      cancelOrder: (orderId) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        set({ game: withOp(game, { op: 'cancelOrder', args: { orderId } }) })
+      },
+      investCapacity: (amount) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        if (game.cash < amount) {
+          get().notify(`Capacity investment needs ${money(amount)}; cash on hand is ${money(game.cash)}.`, 'bad')
+          return
+        }
+        set({ game: withOp(game, { op: 'investCapacity', args: { amount } }) })
+        void syncCompanyAction(game.backendCompanyId, 'operations/orders', { action: 'invest', amount }, `capacity-${game.month}-${Math.round(amount)}`).catch(() => undefined)
+        get().notify(`${money(amount)} invested in fulfilment capacity.`, 'good')
       },
       dropLead: (leadId) => {
         const { game } = get()

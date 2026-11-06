@@ -22,6 +22,7 @@ Last verified against the running suite: 23 client calls all resolve, 13 server 
 | Nova advice | `askAdvisor` (Nova panel) | `POST /api/companies/:id/ai/advice` | `verify:api` (AI guardrails) |
 | **Character dialogue** | `CharacterDialogue` → `fetchCharacters` + `talkToCharacter` | `GET /api/companies/:id/ai/characters`, `POST …/ai/dialogue` | render test + `verify:api` |
 | Rubric | `fetchRubric` | `GET /api/rubric` | `verify:api` |
+| **Operations: purchase orders, expedite, capacity capex** | `OperationsPanel` → `placeOrder` / `expediteOrder` / `cancelOrder` / `investCapacity` (journaled) + `syncCompanyAction('operations/orders')` | `POST /api/companies/:id/operations/orders`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | **Sales funnel** | `SalesFunnel` → `qualifyLead` / `sendQuote` / `dropLead` (journaled) + `syncCompanyAction('sales/funnel')` | `POST /api/companies/:id/sales/funnel`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | Instructor cohorts | `listCohorts`, `createCohort`, `inviteStudents`, `setScenario`, `fetchRoster`, `gradeStudent`, `resetStudent`, `exportRoster` | `GET/POST /api/classes`, `POST /api/classes/:id/{invite,scenario,grade,reset}`, `GET /api/classes/:id/roster`, `GET …/export.csv` | `verify:api`, `verify:auth` |
 

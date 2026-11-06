@@ -10,6 +10,22 @@
 import { openPayables } from '../src/game/accounting'
 import { advanceMonth, dropLead, payAllBills, payBill, qualifyLead, resolveCrisis, sendQuote, setMarketingChannel, setMarketingMix, startGame } from '../src/game/engine'
 import { QUALIFICATION_FEE, quoteChance, quoteValue, scoreLead, tickContracts } from '../src/game/sales'
+import {
+  CAPACITY_BASE,
+  CAPACITY_PER_HEAD,
+  MAX_ORDERS,
+  advanceOrders,
+  cancelOrder as cancelPurchaseOrder,
+  capacityOf,
+  capacityView,
+  defectRate,
+  expediteOrder as expeditePurchaseOrder,
+  expediteCost,
+  makeOrder,
+  openOrders,
+  servedShare,
+} from '../src/game/supply'
+import { investCapacity, placeOrder } from '../src/game/engine'
 import { CHANNEL_IDS, attributeCustomers, mixFactor, normalizeMix, unitEconomics, withChannelShare } from '../src/game/marketing'
 import { applyJournal, assertOp, InvalidOpError, projectState } from '../src/game/ops'
 import type { GameState, Lead } from '../src/game/types'
@@ -308,6 +324,129 @@ const funnelReplay = applyJournal(qualified, [
   { op: 'sendQuote', args: { leadId: 'lead-test-1', discount: 0.1 } },
 ])
 check('replaying the funnel decisions reproduces the state', JSON.stringify(projectState(funnelReplay)) === JSON.stringify(projectState(sendQuote(qualifyLead(qualified, 'lead-test-1'), 'lead-test-1', 0.1))))
+
+
+const openOrderIds = (state: GameState) => openOrders(state.orders ?? []).map((order) => order.id).join(',')
+
+console.log('\nOperations: orders, lead times, capacity, returns\n')
+
+const po = (overrides: Partial<Parameters<typeof makeOrder>[0]> = {}) =>
+  makeOrder({ id: 'po-1', supplierId: 'arden', cover: 1, month: 2, leadMonths: 1, slip: false, ...overrides })
+
+check('a reliable order promises one month after the lead time', po().promisedMonth === 2 + 2, `${po().promisedMonth}`)
+check('a slipping order lands a month later', po({ slip: true }).expectedMonth === po().expectedMonth + 1)
+check('a zero-lead supplier still takes a month to deliver', po({ leadMonths: 0 }).promisedMonth === 3)
+
+const delivered = advanceOrders([po()], 4)
+check('an order delivers on its expected month', delivered.arrived === 1 && delivered.deliveredIds.length === 1, `${delivered.arrived}`)
+check('an on-time order is not flagged late', delivered.lateOrders === 0)
+const early = advanceOrders([po()], 3)
+check('an order in transit does not deliver early', early.arrived === 0 && openOrders(early.orders).length === 1)
+
+const slipped = advanceOrders([po({ slip: true })], 4)
+check('a slipped order misses its promise date', slipped.arrived === 0 && slipped.lateOrders === 0)
+const lateArrival = advanceOrders([po({ slip: true })], 5)
+check('the late order is counted late when it lands', lateArrival.arrived === 1 && lateArrival.lateOrders === 1, `${lateArrival.lateOrders}`)
+
+const pulled = expeditePurchaseOrder([po({ slip: true })], 'po-1', 3)
+check('expediting pulls the delivery one month forward', pulled[0]?.expectedMonth === po({ slip: true }).expectedMonth - 1, `${pulled[0]?.expectedMonth}`)
+check('the expedite premium scales with the cover', expediteCost({ cover: 2 }, 50_000) === 2 * expediteCost({ cover: 1 }, 50_000))
+check('expedite is never free', expediteCost({ cover: 0.1 }, 1) >= 1)
+
+const cancelled = cancelPurchaseOrder([po()], 'po-1')
+check('a cancelled order never delivers', advanceOrders(cancelled, 6).arrived === 0)
+check('cancelled orders leave the open list', openOrders(cancelled).length === 0)
+
+const capacityIdle = capacityOf({ team: [], fixedAssets: 0, branches: [] })
+const capacityStaffed = capacityOf({ team: [{ id: 'e', name: 'E', role: 'ops', skill: 1, salary: 1, morale: 70 } as never], fixedAssets: 0, branches: [] })
+check('capacity starts at the founder baseline', capacityIdle === CAPACITY_BASE, `${capacityIdle}`)
+check('each teammate adds capacity', capacityStaffed === CAPACITY_BASE + CAPACITY_PER_HEAD, `${capacityStaffed}`)
+check('capex buys capacity', capacityOf({ team: [], fixedAssets: 300_000, branches: [] }) > capacityIdle)
+
+check('a business under capacity serves everything', servedShare(40, 100) === 1)
+check('an overloaded business serves only its capacity', Math.abs(servedShare(200, 100) - 0.5) < 1e-9)
+check('unserved accounts are reported', capacityView(200, 100).unserved === 100)
+check('utilisation above 100% reads as over', capacityView(120, 100).state === 'over' && capacityView(60, 100).state === 'slack')
+
+const cleanDefects = defectRate({ supplierQuality: 4, capacityOverload: 0, quality: 70, reliability: 0.92 })
+const cheapDefects = defectRate({ supplierQuality: -4, capacityOverload: 0, quality: 70, reliability: 0.72 })
+const overloadDefects = defectRate({ supplierQuality: 4, capacityOverload: 0.4, quality: 70, reliability: 0.92 })
+check('a cheap supplier produces more returns', cheapDefects > cleanDefects, `${cheapDefects} vs ${cleanDefects}`)
+check('overload produces more returns', overloadDefects > cleanDefects, `${overloadDefects} vs ${cleanDefects}`)
+check('quality reduces returns', defectRate({ supplierQuality: 4, capacityOverload: 0, quality: 95, reliability: 0.92 }) < cleanDefects)
+check('the defect rate stays inside 0–14%', cheapDefects <= 0.14 && cleanDefects >= 0)
+
+let opsGame = startGame({ ...base, industry: 'retail', seed: 8080 })
+for (let index = 0; index < 3; index += 1) opsGame = advance(opsGame)
+
+const openBefore = openOrders(opsGame.orders ?? []).length
+const ordered = placeOrder(opsGame, 2)
+check('a manual order joins the book', (ordered.orders ?? []).length === (opsGame.orders ?? []).length + 1, `${openOrderIds(ordered)}`)
+check('the manual order is in transit', openOrders(ordered.orders ?? []).length === openBefore + 1)
+check('the order is logged', (ordered.log[0]?.title ?? '').includes('Order placed'))
+
+const atCap = { ...opsGame, orders: Array.from({ length: MAX_ORDERS }, (_, index) => po({ id: `cap-${index}`, month: opsGame.month })) }
+check('the order book has a ceiling', placeOrder(atCap, 1).orders?.length === MAX_ORDERS, `${placeOrder(atCap, 1).orders?.length}`)
+
+const cashBeforeInvest = opsGame.cash
+const fixedBeforeInvest = opsGame.fixedAssets ?? 0
+const invested = investCapacity(opsGame, 30_000)
+check('capacity investment moves cash into fixed assets', invested.cash === cashBeforeInvest - 30_000 && (invested.fixedAssets ?? 0) === fixedBeforeInvest + 30_000)
+check('the investment is memoed as capex', (invested.flows?.capex ?? 0) === 30_000, `${invested.flows?.capex}`)
+check('capacity investment below the minimum is refused', investCapacity({ ...opsGame, cash: 1_000_000 }, 1_000).cash === 1_000_000)
+check('capacity investment beyond cash is refused', investCapacity({ ...opsGame, cash: 1_000 }, 30_000).cash === 1_000)
+
+// Through the real close: an overloaded business must lose revenue and churn more.
+const overloadedBase = advance(advance(advance(startGame({ ...base, industry: 'retail', seed: 9091 }))))
+const capacity = capacityOf(overloadedBase)
+const stretched = advanceMonth({ ...overloadedBase, customers: capacity * 3 })
+const comfortable = advanceMonth({ ...overloadedBase, customers: Math.round(capacity * 0.5) })
+check('an overloaded month reports unserved demand', (stretched.lastReport?.unserved ?? 0) > 0, `${stretched.lastReport?.unserved}`)
+check('an overloaded month refunds more than its defect floor', (stretched.lastReport?.returns ?? 0) >= 0)
+check(
+  'revenue per customer falls when the operation is overloaded',
+  (stretched.lastReport?.revenue ?? 0) / Math.max(1, capacity * 3) < (comfortable.lastReport?.revenue ?? 0) / Math.max(1, Math.round(capacity * 0.5)),
+  `${stretched.lastReport?.revenue} vs ${comfortable.lastReport?.revenue}`,
+)
+check(
+  'unserved customers churn faster than served ones',
+  (stretched.lastReport?.churned ?? 0) > (comfortable.lastReport?.churned ?? 0),
+  `${stretched.lastReport?.churned} vs ${comfortable.lastReport?.churned}`,
+)
+check('the report carries capacity and refusals', (stretched.lastReport?.capacity ?? 0) > 0 && (stretched.lastReport?.returns ?? 0) >= 0)
+
+check(
+  'refunds are booked as an operating expense',
+  (stretched.statements?.at(-1)?.income.otherExpenses ?? 0) >= (stretched.lastReport?.returns ?? 0),
+  `${stretched.statements?.at(-1)?.income.otherExpenses} vs ${stretched.lastReport?.returns}`,
+)
+check('the balance sheet still ties after refunds', (stretched.statements?.at(-1)?.balance.imbalance ?? 1) === 0, `${stretched.statements?.at(-1)?.balance.imbalance}`)
+
+check('expediteOrder needs an order id', (() => {
+  try {
+    assertOp({ op: 'expediteOrder', args: {} })
+    return false
+  } catch (error) {
+    return error instanceof InvalidOpError
+  }
+})())
+check('placeOrder rejects cover beyond the ceiling', (() => {
+  try {
+    assertOp({ op: 'placeOrder', args: { cover: 9 } })
+    return false
+  } catch {
+    return true
+  }
+})())
+
+const opsReplay = applyJournal(opsGame, [
+  { op: 'investCapacity', args: { amount: 30_000 } },
+  { op: 'placeOrder', args: { cover: 2 } },
+])
+check(
+  'replaying the operations decisions reproduces the state',
+  JSON.stringify(projectState(opsReplay)) === JSON.stringify(projectState(placeOrder(investCapacity(opsGame, 30_000), 2))),
+)
 
 console.log(failures ? `\n${failures} failure(s)` : '\nAll centre checks passed')
 process.exit(failures ? 1 : 0)

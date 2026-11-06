@@ -48,6 +48,7 @@ async function main() {
   const { MarketingPanel } = await import('../src/components/game/MarketingPanel')
   const { CharacterDialogue } = await import('../src/components/game/CharacterDialogue')
   const { SalesFunnel } = await import('../src/components/game/SalesFunnel')
+  const { OperationsPanel } = await import('../src/components/game/OperationsPanel')
   const { advanceMonth, resolveCrisis, startGame } = await import('../src/game/engine')
   const { money } = await import('../src/lib/format')
 
@@ -160,6 +161,43 @@ for (const industry of ['saas', 'retail'] as const) {
     check(`${industry}: funnel shows the live retainer`, funnelMarkup.includes('Palm Grove Retail'), 'retainer missing')
     check(`${industry}: funnel shows the account score`, funnelMarkup.includes('Hot 90') || funnelMarkup.includes('Hot 89') || funnelMarkup.includes('Hot 9'), 'score missing')
     check(`${industry}: funnel has no leaked values`, !/NaN|undefined|\[object Object\]/.test(funnelMarkup))
+  }
+
+  let opsMarkup = ''
+  let opsError: unknown = null
+  const opsGame = {
+    ...game,
+    customers: 180,
+    orders: [
+      {
+        id: 'po-render-1',
+        supplierId: game.supplierId,
+        cover: 1.5,
+        status: 'in_transit' as const,
+        orderedMonth: game.month,
+        promisedMonth: game.month + 1,
+        expectedMonth: game.month + 2,
+        deliveredMonth: null,
+        lateMonths: 0,
+        note: 'Restock policy',
+      },
+    ],
+  }
+  try {
+    opsMarkup = renderToStaticMarkup(<OperationsPanel game={opsGame} />)
+  } catch (caught) {
+    opsError = caught
+  }
+  check(`${industry}: operations panel renders`, !opsError, opsError instanceof Error ? opsError.message : String(opsError))
+  if (!opsError) {
+    const inventoryIndustry = industry === 'retail' || industry === 'fnb' || industry === 'logistics'
+    check(
+      `${industry}: operations ${inventoryIndustry ? 'shows the order in transit' : 'says it holds no stock'}`,
+      inventoryIndustry ? opsMarkup.includes('Restock policy') : opsMarkup.includes('No physical deliveries'),
+      inventoryIndustry ? 'order missing' : 'stock section shown for a service business',
+    )
+    check(`${industry}: operations flags unserved demand`, opsMarkup.includes('turning away') || opsMarkup.includes('Unserved demand'), 'no overload state')
+    check(`${industry}: operations has no leaked values`, !/NaN|undefined|\[object Object\]/.test(opsMarkup))
   }
 
   const report = game.lastReport
