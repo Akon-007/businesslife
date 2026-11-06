@@ -125,8 +125,9 @@ async function main() {
   const invite = await call(`/api/classes/${classId}/invite`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id } })
   check('student invited', invite.status === 200 && (invite.body?.roster?.length ?? 0) === 1, JSON.stringify(invite.body?.roster?.map((r) => r.name)))
 
-  const scenario = await call(`/api/classes/${classId}/scenario`, { method: 'POST', token: instructor.token, body: { title: 'Cash discipline sprint', industry: 'retail', difficulty: 'hard', startingCash: 3_000_000, months: 6, objectives: ['Survive six months', 'Hold churn under 5%'] } })
+  const scenario = await call(`/api/classes/${classId}/scenario`, { method: 'POST', token: instructor.token, body: { title: 'Cash discipline sprint', industry: 'retail', difficulty: 'hard', startingCash: 3_000_000, months: 6, seed: 424242, objectives: ['Survive six months', 'Hold churn under 5%'] } })
   check('scenario assigned', scenario.status === 200 && scenario.body?.scenario?.title === 'Cash discipline sprint')
+  check('scenario keeps the instructor seed', scenario.body?.scenario?.seed === 424242, String(scenario.body?.scenario?.seed))
 
   const learnerRoster = await call(`/api/classes/${classId}/roster`, { token: learner.token })
   check('students can see their cohort roster', learnerRoster.status === 200)
@@ -139,6 +140,19 @@ async function main() {
   check('score responds to evidence, not valuation alone', (legitScore ?? 0) < 100 && (legitScore ?? 0) > 0, String(legitScore))
   check('roster shows integrity status', ['verified', 'flagged', 'no-data', 'broken-chain'].includes(entry?.integrity), entry?.integrity)
   check('flagged commit marks integrity', entry?.integrity === 'flagged', entry?.integrity)
+
+  console.log('\nSeeded replay')
+  const canonicalRun = await call(`/api/companies/${companyId}/run`, { token: learner.token })
+  const seedSnapshot = { ...canonicalRun.body.authority, seed: 999999 }
+  const offSeed = await call(`/api/companies/${companyId}/run`, { method: 'PUT', token: learner.token, body: seedSnapshot })
+  check('run seed is accepted with a commit', offSeed.status === 200 && offSeed.body?.seed === 999999, String(offSeed.body?.seed))
+  check('run remembers the assigned scenario seed', offSeed.body?.scenarioSeed === 424242, String(offSeed.body?.scenarioSeed))
+  const offSeedRoster = await call(`/api/classes/${classId}/roster`, { token: instructor.token })
+  const offSeedEntry = offSeedRoster.body?.roster?.[0]
+  check('roster exposes the run seed', offSeedEntry?.seed === 999999, String(offSeedEntry?.seed))
+  check('roster flags a run from a different seed', offSeedEntry?.seedMatch === false, String(offSeedEntry?.seedMatch))
+  const seededAudit = await call(`/api/companies/${companyId}/audit`, { token: learner.token })
+  check('commit audit records the seed', (seededAudit.body?.records ?? []).some((record) => record.type === 'run_commit'))
 
   const readOnly = await call(`/api/companies/${companyId}/run`, { method: 'PUT', token: instructor.token, body: { month: 3, day: 1, cashKobo: 1, customers: 1, revenueKobo: 1, expensesKobo: 1, valuationKobo: 1 } })
   check('instructor cannot write student state', readOnly.status === 403, `status ${readOnly.status}`)
@@ -157,9 +171,43 @@ async function main() {
   check('CSV export returns attachment', csv.status === 200 && (csv.headers.get('content-type') ?? '').includes('text/csv'))
   check('CSV has header plus one student', csvLines.length === 2, `${csvLines.length} lines`)
   check('CSV carries engine score and grade', csvLines[1]?.includes('78'), csvLines[1])
+  check('CSV header includes the scenario seed', csvLines[0]?.split(',').includes('scenario_seed'), csvLines[0])
+  check('CSV row carries the scenario seed', csvLines[1]?.includes('424242'), csvLines[1])
+
+  console.log('\nCompetency rubric')
+  const rubricSpec = await call('/api/rubric')
+  check('rubric definition is published', rubricSpec.status === 200 && (rubricSpec.body?.criteria ?? []).length === 4, `${(rubricSpec.body?.criteria ?? []).length} criteria`)
+  const shortRationale = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 3, customers: 3, operations: 3, judgement: 3 }, rationale: 'Fine.' } })
+  check('rubric grade without a real rationale is rejected', shortRationale.status === 400, `status ${shortRationale.status}`)
+  const partialRubric = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 4 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
+  check('incomplete rubric is rejected', partialRubric.status === 400, `status ${partialRubric.status}`)
+  const outOfRange = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 5, customers: 3, operations: 3, judgement: 3 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
+  check('rubric levels outside 1-4 are rejected', outOfRange.status === 400, `status ${outOfRange.status}`)
+
+  const rationale = 'Held receivables under control, collected on time and explained every price change in the report.'
+  const proficient = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 3, customers: 3, operations: 3, judgement: 3 }, rationale } })
+  check('complete rubric produces a grade', proficient.status === 200 && proficient.body?.grade === 75, `grade ${proficient.body?.grade}`)
+  check('rubric breakdown is returned', (proficient.body?.breakdown ?? []).length === 4)
+  const exemplary = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 4, customers: 3, operations: 3, judgement: 2 }, rationale } })
+  check('weighted rubric weights the criteria', exemplary.body?.grade === 78, `grade ${exemplary.body?.grade}`)
+  const gradedRoster = await call(`/api/classes/${classId}/roster`, { token: instructor.token })
+  const graded = gradedRoster.body?.roster?.[0]
+  check('roster stores the rubric', graded?.rubric?.cash === 4 && graded?.rubric?.judgement === 2, JSON.stringify(graded?.rubric))
+  check('roster stores the rationale', graded?.rationale === rationale)
+  check('roster records the engine score at grading time', typeof graded?.engineScoreAtGrade === 'number')
+  const rubricAudit = await call(`/api/companies/${companyId}/audit`, { token: learner.token })
+  const gradeRecord = (rubricAudit.body?.records ?? []).filter((record) => record.type === 'instructor_grade').pop()
+  check('grade is written to the audit chain', Boolean(gradeRecord))
+  const rubricCsv = await call(`/api/classes/${classId}/export.csv`, { token: instructor.token, raw: true })
+  const rubricHeader = rubricCsv.text.trim().split('\n')[0]?.split(',') ?? []
+  check('CSV exports rubric columns', ['rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'grade_minus_engine'].every((column) => rubricHeader.includes(column)), rubricHeader.join('|'))
+  const rubricRow = rubricCsv.text.trim().split('\n')[1] ?? ''
+  check('CSV carries the rationale text', rubricRow.includes('Held receivables under control'), rubricRow.slice(0, 120))
 
   const reset = await call(`/api/classes/${classId}/reset`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id } })
   check('instructor resets a run', reset.status === 200 && reset.body?.authority?.score === 0, JSON.stringify(reset.body?.authority))
+  check('reset restores the scenario seed', reset.body?.authority !== undefined && reset.body?.roster?.[0]?.seed === 424242, String(reset.body?.roster?.[0]?.seed))
+  check('roster confirms the assigned seed after reset', reset.body?.roster?.[0]?.seedMatch === true, String(reset.body?.roster?.[0]?.seedMatch))
   const afterReset = await call(`/api/companies/${companyId}/audit`, { token: learner.token })
   check('reset is audited', (afterReset.body?.records ?? []).some((record) => record.type === 'cohort_run_reset'))
   check('audit chain still verifies after reset', afterReset.body?.verification?.valid === true, JSON.stringify(afterReset.body?.verification))

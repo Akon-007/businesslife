@@ -39,9 +39,15 @@ async function request<T>(path: string, options: RequestInit & { scope?: AuthSco
   if (token) headers.set('authorization', `Bearer ${token}`)
   const response = await fetch(path, { ...init, headers })
   const payload = (await response.json().catch(() => ({}))) as T & { error?: { message?: string } }
-  if (!response.ok) throw new Error(payload.error?.message ?? `API request failed (${response.status})`)
+  if (!response.ok) {
+    const failure = new Error(payload.error?.message ?? `API request failed (${response.status})`) as Error & { status?: number }
+    failure.status = response.status
+    throw failure
+  }
   return payload
 }
+
+interface AuthResponse { token: string; player: { id: string; name: string; role: string }; expiresAt?: string }
 
 export async function ensureApiSession(
   name: string,
@@ -49,9 +55,39 @@ export async function ensureApiSession(
 ) {
   const existing = readToken('learner')
   if (existing) return existing
-  const result = await request<{ token: string }>('/api/auth/dev-login', { method: 'POST', body: JSON.stringify({ name, ...profile }) })
+  const accountEmail = profile.accountEmail?.trim().toLowerCase() ?? ''
+  const password = profile.password ?? ''
+  let result: AuthResponse
+  if (accountEmail && password.length >= 8) {
+    // Real accounts: register once, then sign in with the same credentials.
+    try {
+      result = await request<AuthResponse>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, ...profile, accountEmail, password }),
+      })
+    } catch (error) {
+      if ((error as { status?: number }).status !== 409) throw error
+      result = await request<AuthResponse>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ accountEmail, password }),
+      })
+    }
+  } else {
+    result = await request<AuthResponse>('/api/auth/dev-login', { method: 'POST', body: JSON.stringify({ name, ...profile }) })
+  }
   writeToken('learner', result.token)
   return result.token
+}
+
+export async function signOut(scope: AuthScope = 'learner') {
+  const token = readToken(scope)
+  clearSession(scope)
+  if (!token) return
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', headers: { authorization: `Bearer ${token}` } })
+  } catch {
+    /* local session is already cleared */
+  }
 }
 
 export async function checkCompanyName(name: string) {
@@ -208,6 +244,22 @@ export interface RosterEntry {
   gradedAt: string | null
   integrity: 'verified' | 'flagged' | 'no-data' | 'broken-chain'
   violations: number
+  seed: number | null
+  seedMatch: boolean | null
+  rubric: Record<string, number> | null
+  rationale: string | null
+  engineScoreAtGrade: number | null
+}
+
+export interface RubricCriterion {
+  id: 'cash' | 'customers' | 'operations' | 'judgement'
+  label: string
+  weight: number
+  hint: string
+}
+
+export async function fetchRubric(): Promise<{ criteria: RubricCriterion[]; minRationale: number }> {
+  return request('/api/rubric')
 }
 
 export interface Cohort {
@@ -220,11 +272,29 @@ export interface Cohort {
   roster?: RosterEntry[]
 }
 
-export async function instructorLogin(name: string, email?: string) {
-  const result = await request<{ token: string; player: { id: string; name: string; role: string } }>('/api/auth/dev-login', {
-    method: 'POST',
-    body: JSON.stringify({ name, accountEmail: email, role: 'instructor', password: crypto.randomUUID() }),
-  })
+export async function instructorLogin(name: string, email?: string, password?: string, instructorCode?: string) {
+  const accountEmail = email?.trim().toLowerCase() ?? ''
+  let result: AuthResponse
+  if (accountEmail && password && password.length >= 8) {
+    try {
+      result = await request<AuthResponse>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, accountEmail, password, role: 'instructor', instructorCode: instructorCode ?? '' }),
+      })
+    } catch (error) {
+      if ((error as { status?: number }).status !== 409) throw error
+      result = await request<AuthResponse>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ accountEmail, password }),
+      })
+      if (result.player.role === 'learner') throw new Error('That account is a student account, not an instructor account.')
+    }
+  } else {
+    result = await request<AuthResponse>('/api/auth/dev-login', {
+      method: 'POST',
+      body: JSON.stringify({ name, accountEmail, role: 'instructor', password: crypto.randomUUID() }),
+    })
+  }
   writeToken('instructor', result.token)
   return result.player
 }
@@ -254,7 +324,10 @@ export function fetchRoster(classId: string): Promise<{ class: Cohort; roster: R
   return request(`/api/classes/${classId}/roster`, { scope: 'instructor' })
 }
 
-export function gradeStudent(classId: string, payload: { studentId: string; grade: number; feedback: string }): Promise<{ roster: RosterEntry[] }> {
+export function gradeStudent(
+  classId: string,
+  payload: { studentId: string; grade?: number; feedback?: string; rationale?: string; rubric?: Record<string, number> },
+): Promise<{ roster: RosterEntry[] }> {
   return request(`/api/classes/${classId}/grade`, { method: 'POST', scope: 'instructor', body: JSON.stringify(payload) })
 }
 
@@ -275,6 +348,26 @@ export async function downloadRosterCsv(classId: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function joinCohortByStudent(): Promise<unknown> {
-  return request('/api/classes', { scope: 'learner' })
+export interface CohortScenario {
+  title?: string
+  industry?: string
+  difficulty?: string
+  startingCash?: number
+  months?: number
+  objectives?: string[]
+  seed?: number
+  deadline?: string | null
+}
+
+export interface StudentCohort {
+  id: string
+  name: string
+  lecturerId: string
+  scenario: CohortScenario | null
+}
+
+/** Cohorts this student belongs to (with the scenario they were assigned). */
+export async function myCohorts(): Promise<StudentCohort[]> {
+  const result = await request<{ classes?: StudentCohort[] }>('/api/classes', { scope: 'learner' })
+  return result.classes ?? []
 }

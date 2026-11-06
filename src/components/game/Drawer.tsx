@@ -923,6 +923,60 @@ function BankPanel() {
         )}
       </PanelSection>
 
+      <PanelSection
+        title="Receivables"
+        hint="Revenue is booked when a customer buys. Cash arrives when the invoice falls due."
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Owed to you" value={money(game.receivables ?? 0, { compact: true })} />
+          <Stat
+            label="Overdue"
+            value={String((game.invoices ?? []).filter((invoice) => invoice.status === 'overdue').length)}
+            tone={(game.invoices ?? []).some((invoice) => invoice.status === 'overdue') ? 'warn' : 'good'}
+          />
+          <Stat
+            label="Open invoices"
+            value={String((game.invoices ?? []).filter((invoice) => invoice.status !== 'paid').length)}
+          />
+        </div>
+        <div className="mt-2 space-y-1.5">
+          {(game.invoices ?? [])
+            .filter((invoice) => invoice.status !== 'paid')
+            .slice(-4)
+            .reverse()
+            .map((invoice) => (
+              <div key={invoice.id} className="flex items-center justify-between rounded-lg bg-paper-3/60 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold text-ink">{invoice.customer}</p>
+                  <p className="text-[9.5px] text-ink-400">
+                    net {invoice.terms} · due {monthLabel(invoice.dueMonth)} · issued {monthLabel(invoice.issuedMonth)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-bold tabular-nums text-ink">{money(invoice.amount, { compact: true })}</p>
+                  <p
+                    className={clsx(
+                      'text-[9px] font-bold uppercase tracking-[0.06em]',
+                      invoice.status === 'overdue' ? 'text-coral' : 'text-ink-400',
+                    )}
+                  >
+                    {invoice.status === 'overdue' ? 'overdue' : 'open'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          {(game.invoices ?? []).filter((invoice) => invoice.status !== 'paid').length === 0 ? (
+            <p className="rounded-xl bg-brand-50 px-3 py-3 text-center text-[10.5px] font-semibold text-brand-700">
+              Nothing outstanding. Every invoice has been collected.
+            </p>
+          ) : null}
+        </div>
+        <p className="mt-2 text-[9.5px] leading-relaxed text-ink-400">
+          Late payers settle about 80% of the invoice the following month; the remainder is a bad debt. Watch this
+          balance before you take on new costs.
+        </p>
+      </PanelSection>
+
       <p className="px-1 text-[10px] leading-relaxed text-ink-400">
         Credit limit: eight months of revenue, between ₦20m and ₦300m. Interest accrues monthly and compounds through
         your monthly costs.

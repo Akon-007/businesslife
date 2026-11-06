@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -7,6 +7,7 @@ import {
   Building2,
   Check,
   ChevronRight,
+  GraduationCap,
   Info,
   LineChart,
   Megaphone,
@@ -25,7 +26,7 @@ import { Logo } from '../ui/Logo'
 import { buttonClass } from '../ui/Button'
 import { DIFFICULTIES, FOUNDER_BACKGROUNDS, INDUSTRIES, STRATEGIES } from '../../game/data'
 import { useGame } from '../../game/store'
-import { checkCompanyName } from '../../lib/api'
+import { checkCompanyName, myCohorts, type StudentCohort } from '../../lib/api'
 import { money, number } from '../../lib/format'
 import type { DifficultyId, FounderBackgroundId, IndustryId, StrategyId } from '../../game/types'
 
@@ -82,6 +83,28 @@ export function Onboarding() {
   const [strategy, setStrategy] = useState<StrategyId>('product')
   const [background, setBackground] = useState<FounderBackgroundId>('operator')
   const [difficulty, setDifficulty] = useState<DifficultyId>('standard')
+  const [cohort, setCohort] = useState<StudentCohort | null>(null)
+
+  // A student enrolled in a cohort starts on the instructor's scenario: same
+  // seed, same starting capital, same market — so runs are comparable.
+  useEffect(() => {
+    let cancelled = false
+    void myCohorts()
+      .then((classes) => {
+        if (cancelled) return
+        const assigned = classes.find((item) => item.scenario && Number(item.scenario.seed) > 0)
+        if (!assigned || !assigned.scenario) return
+        setCohort(assigned)
+        const scenario = assigned.scenario
+        if (scenario.industry && INDUSTRIES.some((item) => item.id === scenario.industry)) setIndustry(scenario.industry as IndustryId)
+        if (scenario.difficulty && DIFFICULTIES.some((item) => item.id === scenario.difficulty)) setDifficulty(scenario.difficulty as DifficultyId)
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+
+  const scenarioSeed = Number(cohort?.scenario?.seed ?? 0) || undefined
+  const scenarioCash = Number(cohort?.scenario?.startingCash ?? 0) || undefined
 
   const shuffleCompany = () => setCompany(COMPANY_IDEAS[Math.floor(Math.random() * COMPANY_IDEAS.length)])
 
@@ -89,9 +112,10 @@ export function Onboarding() {
   const strategyDef = useMemo(() => STRATEGIES.find((item) => item.id === strategy)!, [strategy])
   const backgroundDef = useMemo(() => FOUNDER_BACKGROUNDS.find((item) => item.id === background)!, [background])
   const difficultyDef = useMemo(() => DIFFICULTIES.find((item) => item.id === difficulty)!, [difficulty])
-  const startingCash = Math.round(
+  const derivedCash = Math.round(
     (industryDef.startingCash + strategyDef.starting.cash + backgroundDef.starting.cash) * difficultyDef.cashMult,
   )
+  const startingCash = scenarioCash ?? derivedCash
   const startingCustomers = industryDef.startingCustomers + strategyDef.starting.customers + backgroundDef.starting.customers
   const startingQuality = industryDef.startingQuality + strategyDef.starting.quality + backgroundDef.starting.quality
 
@@ -125,7 +149,9 @@ export function Onboarding() {
       industry,
       strategy: 'product',
       founderBackground: 'operator',
-      difficulty: 'standard',
+      difficulty,
+      seed: scenarioSeed,
+      startingCash: scenarioCash,
     })
   }
 
@@ -137,13 +163,22 @@ export function Onboarding() {
             <Link to="/" aria-label="BUSINESSLIFE home">
               <Logo />
             </Link>
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-500 transition hover:text-ink"
-            >
-              Back to site
-              <ArrowRight className="size-3.5 rotate-[-45deg]" />
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/lecturer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3 py-1.5 text-[12px] font-semibold text-ink-600 transition hover:border-brand-300 hover:text-ink"
+              >
+                <GraduationCap className="size-3.5" />
+                Instructor
+              </Link>
+              <Link
+                to="/"
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-500 transition hover:text-ink"
+              >
+                Back to site
+                <ArrowRight className="size-3.5 rotate-[-45deg]" />
+              </Link>
+            </div>
           </header>
 
           <div className="mx-auto flex w-full max-w-[540px] flex-1 flex-col justify-center py-8 sm:py-12">
@@ -208,6 +243,21 @@ export function Onboarding() {
                       <h1 className="font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[46px]">Level 01:<br />The Idea.</h1>
                       <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink-500">Start a real company by choosing a market, naming the problem, proposing a solution and claiming an available business name.</p>
                       <div className="mt-6 space-y-4">
+                        {cohort?.scenario ? (
+                          <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-brand-300 bg-brand-50 p-3">
+                            <GraduationCap className="mt-0.5 size-4 shrink-0 text-brand-700" />
+                            <div className="text-[11px] leading-relaxed text-ink-700">
+                              <p className="font-semibold text-ink">
+                                Cohort scenario · {cohort.scenario.title ?? 'Assigned scenario'}
+                              </p>
+                              <p className="mt-0.5">
+                                Everyone in {cohort.name} starts with the same market, the same seed
+                                {scenarioSeed ? ` (#${scenarioSeed})` : ''} and {money(startingCash, { compact: true })} of starting capital.
+                                Your industry and difficulty are set by your instructor.
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
                         <div><p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">1 · Choose your industry</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{INDUSTRIES.map((item) => { const Icon = INDUSTRY_ICONS[item.id]; return <button key={item.id} type="button" onClick={() => setIndustry(item.id)} className={clsx('flex items-center gap-2.5 rounded-2xl border p-3 text-left transition', industry === item.id ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-300' : 'border-line bg-white hover:border-brand-300')}><span className="grid size-8 place-items-center rounded-xl bg-paper-3 text-ink-600"><Icon className="size-4" /></span><span><span className="block text-[12px] font-bold text-ink">{item.name}</span><span className="block text-[9.5px] text-ink-400">{item.tagline}</span></span></button> })}</div></div>
                         <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">2 · Identify a problem worth solving</span><textarea value={problem} onChange={(event) => setProblem(event.target.value)} required maxLength={240} placeholder="What frustrating customer problem have you noticed?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
                         <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">3 · Propose a solution</span><textarea value={solution} onChange={(event) => setSolution(event.target.value)} required maxLength={240} placeholder="What will you offer that makes the problem better?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>

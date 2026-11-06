@@ -143,8 +143,8 @@
 | 12 | Scenario resets to a reproducible starting state | ❌ Fail | Reset exists; reproducibility does not |
 | 13 | Unauthorised users cannot alter balances or scores | ❌ Fail | State lives in `localStorage`; any user can edit balances/score directly |
 
-**Result: 3 pass · 6 partial · 4 fail.** *(Superseded by §9.5 after the 6 November implementation:
-5 pass · 7 partial · 1 fail.)*
+**Result: 3 pass · 6 partial · 4 fail.** *(Superseded: 5 pass · 7 partial · 1 fail after §9,
+then 7 pass · 6 partial · 0 fail after §9.6.)*
 
 ---
 
@@ -255,8 +255,7 @@ Evidence: `backend/authority.ts`, `backend/server.ts` (run/audit routes), `src/g
    team skill, ownership, minus a debt penalty) is now shared by client and server, with benchmarks
    calibrated against what the simulation actually produces (`scripts/verify-scoring.ts` shows a
    13–88 spread across representative runs instead of everything at 100).
-2. **Unseeded randomness remained** — scoring/authority work does not fix reproducibility; scenario
-   seeding (finding #2 in §6) is still outstanding.
+2. **Unseeded randomness remained** at the time of §9.1 — resolved in §9.6.
 
 **Honest boundary:** the simulation arithmetic still executes in the client and the server validates
 it. That defeats naive tampering, makes scores authoritative and creates an auditable record, but it
@@ -291,19 +290,49 @@ Evidence: `src/pages/Lecturer.tsx`, cohort routes in `backend/server.ts`, `backe
 
 `npm run verify` now runs 47 API assertions, a scoring-parity matrix (36 runs across industries,
 strategies and horizons) and a six-month legitimate-play check. All pass. `npm run build` and
-`npm run lint` remain clean (0 errors).
+`npm run lint` remain clean (0 errors). _(Superseded by §9.6: 70 API assertions, 23 auth assertions,
+plus determinism and cash-timing suites, and CI wiring.)_
 
 ### 9.5 Still open from §6
 
-| Priority | Item | Status |
+| Priority | Item | Status after §9.6 |
 |---|---|---|
-| 1 | Simulation execution moved fully server-side (replay, multiplayer prerequisite) | open |
-| 2 | Seeded PRNG, scenario versioning, snapshots | open |
-| 3 | Real authentication (password verification, recovery, SSO) | open — dev-login only; role model now exists |
-| 4 | Invoices, receivables/payables, three financial statements | open |
-| 5 | Competency rubric, written rationale capture | open |
-| 6 | Unit/integration test framework + CI wiring for `npm run verify` | partial — assertion scripts exist, no CI |
+| 1 | Simulation execution moved fully server-side (replay, multiplayer prerequisite) | open — unchanged; see the honest boundary in §9.6 |
+| 2 | Seeded PRNG, scenario versioning, snapshots | **implemented** — deterministic engine, replay restart, cohort scenario seed |
+| 3 | Real authentication (password verification, recovery, SSO) | **implemented (accounts)** — scrypt, sessions, revocation, throttling; recovery and SSO still open |
+| 4 | Invoices, receivables/payables, three financial statements | **partial** — invoice lifecycle + receivables ledger + cash timing done; payables and full statements still open |
+| 5 | Competency rubric, written rationale capture | **implemented** |
+| 6 | Unit/integration test framework + CI wiring for `npm run verify` | **implemented** — six verify suites + GitHub Actions |
 
-Updated MVP acceptance (§16.2): **5 pass · 7 partial · 1 fail** — the single outright failure is now
-"invoices and payment schedules affect cash at the correct time"; instructor review is possible but
-replay is not, and reset exists without reproducibility, so both remain partial.
+### 9.6 Reproducibility, accounts, invoices, rubric, CI — **implemented**
+
+| Before | After |
+|---|---|
+| Every simulation draw used `Math.random`; two players with identical decisions had different outcomes | One PRNG source (`src/game/random.ts`, FNV-1a + mulberry32). `startGame({ seed })` seeds named streams (`bootstrap`, `candidates`, `pipeline`, `crisis`, `micro`, `invoices`, `attrition`, `offers`); no bare `Math.random` remains in the engine |
+| Reset threw the run away | "Replay this scenario from the start" restarts on the same seed, same market, same starting capital |
+| Cohorts had no shared baseline | Instructors assign a scenario seed; students see it during onboarding and start from it; the roster flags any run that used a different seed; CSV carries `scenario_seed` and `seed_match` |
+| Passwords were a bare SHA-256 digest issued by a dev-login endpoint | `POST /api/auth/{register,login,logout}` with salted scrypt hashes, seven-day sessions, revocation, timing-safe comparison, legacy-hash upgrade, per-email throttling, and a production gate on dev sign-in |
+| Grading was a free number plus an optional comment | Four-criterion rubric (weights 30/30/20/20), 1–4 levels, a mandatory ≥40-character rationale, stored levels and rationale, engine score captured at grading time, rationale digest in the audit chain, rubric columns in the CSV |
+| Revenue hit cash the same month it was booked | Accrual revenue vs cash settlement: 30/45-day terms per industry, invoices issued at close, settled when due, late payers marked overdue and recovering ~80% next month, the rest written off. Report shows invoiced/collected/receivable; Bank panel lists open invoices |
+| Verification was local-only | `.github/workflows/verify.yml` runs lint, typecheck, build, boots the API and runs the full suite on every push and PR |
+
+Verification now: `verify:api` 70 assertions · `verify:auth` 23 · `verify:scoring` 36-run parity
+matrix (spread 33–45, 0% saturation) · `verify:determinism` (24-month replay identity) ·
+`verify:cash` (20 timing assertions) · `verify:legit` (6 months, 0 false flags). All green.
+
+**Honest boundaries introduced or still standing:**
+- Cash timing is modelled at monthly granularity with one aggregated invoice per month and a
+  single default probability per period. It is a faithful *sequence* (booked → due → collected or
+  overdue → recovered), not a day-level accounts-receivable ageing schedule.
+- Dev sign-in is still a real bypass while `NODE_ENV != production`. It is gated and documented, but
+  a deployment must set `NODE_ENV=production` (and `INSTRUCTOR_CODE`) for the gate to bite.
+- Password recovery, email verification and SSO are not implemented; there is no outbound email.
+- The engine still runs in the browser. Determinism makes replay *exact* for a given seed and
+  decision script, but the server replays nothing itself: it validates the committed result. A
+  server-side `advanceMonth` remains the prerequisite for true replay and multiplayer (item 1).
+- Payables, a balance sheet/cash-flow statement, and multi-currency remain out of scope for this pass.
+
+Updated MVP acceptance (§16.2): **7 pass · 6 partial · 0 fail**. The former outright failure —
+"invoices and payment schedules affect cash at the correct time" — now passes; the remaining
+partials are server-side execution, multi-currency statements, and the academic-integration items
+that depend on them.

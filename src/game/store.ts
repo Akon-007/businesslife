@@ -52,6 +52,8 @@ export interface StartInput {
   password?: string
   problem?: string
   solution?: string
+  seed?: number
+  startingCash?: number
 }
 
 interface GameStore {
@@ -87,6 +89,7 @@ interface GameStore {
   notify: (message: string, tone?: Toast['tone']) => void
   completeMission: (missionId: string) => void
   recordEvidence: (evidence: string[]) => void
+  restartScenario: () => void
   syncRun: () => void
   hydrateAuthority: () => Promise<void>
 }
@@ -109,7 +112,14 @@ export const useGame = create<GameStore>()(
             set((state) => state.game ? { game: { ...state.game, backendCompanyId: remote.id } } : state)
             get().syncRun()
           })
-          .catch(() => get().notify('Local simulation is running. Backend sync will retry on the next action.', 'neutral'))
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : ''
+            if (/email|password|account|sign in/i.test(message)) {
+              get().notify(`Account: ${message} Your local run still works; fix the account to sync grades.`, 'neutral')
+              return
+            }
+            get().notify('Local simulation is running. Backend sync will retry on the next action.', 'neutral')
+          })
       },
       reset: () => {
         const { game, runs } = get()
@@ -165,7 +175,7 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game?.backendCompanyId) return
         const companyId = game.backendCompanyId
-        void commitRun(companyId, authorityPayload(game))
+        void commitRun(companyId, { ...authorityPayload(game), seed: game.seed })
           .then((result) => {
             set((state) => {
               if (!state.game) return state
@@ -199,6 +209,30 @@ export const useGame = create<GameStore>()(
           .catch(() => {
             set((state) => state.game?.authority ? { game: { ...state.game, authority: { ...state.game.authority, integrity: 'unknown' } } } : state)
           })
+      },
+      restartScenario: () => {
+        const { game, runs } = get()
+        if (!game) return
+        const next = startGame({
+          founder: game.founder,
+          firstName: game.firstName,
+          lastName: game.lastName,
+          nickname: game.nickname,
+          avatar: game.avatar,
+          accountEmail: game.accountEmail,
+          company: game.company,
+          industry: game.industry,
+          strategy: game.strategy,
+          founderBackground: game.founderBackground,
+          difficulty: game.difficulty,
+          seed: game.seed,
+        })
+        set({
+          game: { ...next, backendCompanyId: game.backendCompanyId },
+          runs: [archive(game), ...runs].slice(0, 8),
+        })
+        get().syncRun()
+        get().notify('Scenario restarted from the same seed — same starting conditions, same city.', 'good')
       },
       hydrateAuthority: async () => {
         const { game } = get()

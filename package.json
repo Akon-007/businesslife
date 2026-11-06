@@ -10,9 +10,12 @@
     "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify": "node scripts/verify-integrity.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-legit-play.ts",
+    "verify": "node scripts/verify-integrity.mjs && node scripts/verify-auth.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-determinism.ts && npx tsx scripts/verify-cash-timing.ts && npx tsx scripts/verify-legit-play.ts",
     "verify:api": "node scripts/verify-integrity.mjs",
+    "verify:auth": "node scripts/verify-auth.mjs",
     "verify:scoring": "npx tsx scripts/verify-scoring.ts",
+    "verify:determinism": "npx tsx scripts/verify-determinism.ts",
+    "verify:cash": "npx tsx scripts/verify-cash-timing.ts",
     "verify:legit": "npx tsx scripts/verify-legit-play.ts"
   },
   "dependencies": {

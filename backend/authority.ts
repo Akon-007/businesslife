@@ -22,6 +22,8 @@ const MAX_KOBO = 1e16 // ₦100bn hard ceiling on any single figure
 const MAX_MONTH = 1200
 
 export interface RunSnapshot {
+  /** Seed the run was generated with. Recorded so instructors can replay it. */
+  seed?: number
   month: number
   day?: number
   cashKobo: number

@@ -392,7 +392,7 @@ export function makeCompetitors(industry: IndustryId): Competitor[] {
   }))
 }
 
-const unicornId = (index: number) => `comp-${index}-${Math.random().toString(36).slice(2, 6)}`
+const unicornId = (index: number) => `comp-${index}`
 
 export const BRANCH_OPTIONS: Branch[] = [
   {
@@ -501,10 +501,10 @@ const QUIRKS = [
   'Will tell you what you need to hear.',
 ]
 
-export const randomCandidateName = () => ({
-  name: `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`,
-  background: BACKGROUNDS[Math.floor(Math.random() * BACKGROUNDS.length)],
-  quirk: QUIRKS[Math.floor(Math.random() * QUIRKS.length)],
+export const randomCandidateName = (rng: () => number = Math.random) => ({
+  name: `${FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]}`,
+  background: BACKGROUNDS[Math.floor(rng() * BACKGROUNDS.length)],
+  quirk: QUIRKS[Math.floor(rng() * QUIRKS.length)],
 })
 
 export const CRISES: CrisisDef[] = [

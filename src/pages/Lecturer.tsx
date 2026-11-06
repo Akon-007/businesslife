@@ -32,6 +32,7 @@ import {
   type RosterEntry,
 } from '../lib/api'
 import { money, number } from '../lib/format'
+import { DEFAULT_RUBRIC, MIN_RATIONALE, RUBRIC, RUBRIC_LEVELS, localGrade, type RubricScores } from '../game/rubric'
 
 const INDUSTRIES = [
   { id: 'saas', label: 'Technology / SaaS' },
@@ -219,11 +220,11 @@ export default function Lecturer() {
                     await refresh(selected.id)
                   }, 'Student added to the cohort.')
                 }
-                onGrade={(studentId, grade, feedback) =>
+                onGrade={(studentId, grade, rationale, rubric) =>
                   run(async () => {
-                    const result = await gradeStudent(selected.id, { studentId, grade, feedback })
+                    const result = await gradeStudent(selected.id, { studentId, grade, rationale, rubric, feedback: rationale })
                     setRoster(result.roster)
-                  }, 'Grade recorded.')
+                  }, 'Grade and rationale recorded.')
                 }
                 onReset={(studentId) =>
                   run(async () => {
@@ -248,6 +249,8 @@ export default function Lecturer() {
 function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -255,8 +258,13 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
     event.preventDefault()
     setBusy(true)
     setError('')
+    if (password && password.length < 8) {
+      setError('Use a password of at least 8 characters.')
+      setBusy(false)
+      return
+    }
     try {
-      await instructorLogin(name.trim(), email.trim() || undefined)
+      await instructorLogin(name.trim(), email.trim() || undefined, password || undefined, code.trim() || undefined)
       onSignedIn()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Sign in failed.')
@@ -273,8 +281,8 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
         </Link>
         <h1 className="mt-6 font-display text-[26px] font-semibold leading-tight">Instructor portal</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-white/60">
-          Create cohorts, assign scenarios, review server-verified performance and export grades. This sandbox uses a
-          dev instructor session — production replaces it with institutional SSO.
+          Create cohorts, assign scenarios, review server-verified performance and export grades. Sign in with an
+          institution email and password, or leave the password blank for a local dev session.
         </p>
         <form onSubmit={submit} className="mt-6 space-y-3 rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
           <label className="block">
@@ -299,6 +307,29 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
               className="mt-1.5 h-11 w-full rounded-xl border border-white/15 bg-ink-950 px-3 text-[13px] text-white outline-none focus:border-lime"
             />
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={8}
+                autoComplete="current-password"
+                placeholder="8+ characters"
+                className="mt-1.5 h-11 w-full rounded-xl border border-white/15 bg-ink-950 px-3 text-[13px] text-white outline-none focus:border-lime"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Instructor code</span>
+              <input
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                placeholder="from your school"
+                className="mt-1.5 h-11 w-full rounded-xl border border-white/15 bg-ink-950 px-3 text-[13px] text-white outline-none focus:border-lime"
+              />
+            </label>
+          </div>
           {error ? <p className="rounded-xl bg-coral/20 px-3 py-2 text-[11.5px] font-semibold text-coral">{error}</p> : null}
           <button type="submit" disabled={busy} className={clsx(buttonClass('lime', 'md'), 'w-full justify-center')}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <GraduationCap className="size-4" />}
@@ -306,7 +337,8 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
           </button>
         </form>
         <p className="mt-4 text-[11px] leading-relaxed text-white/40">
-          Every grade, reset and scenario change is written to the student's audit chain by the server.
+          Every grade, reset and scenario change is written to the student's audit chain by the server. Instructor
+          accounts need the code your school configured; without one you get a dev session that is disabled in production.
         </p>
       </div>
     </div>
@@ -351,13 +383,14 @@ function ScenarioCard({
   busy: boolean
   onAssign: (scenario: Record<string, unknown>) => void
 }) {
-  const current = cohort.scenario as { title?: string; industry?: string; difficulty?: string; startingCash?: number; months?: number; objectives?: string[] } | null
+  const current = cohort.scenario as { title?: string; industry?: string; difficulty?: string; startingCash?: number; months?: number; objectives?: string[]; seed?: number } | null
   const [title, setTitle] = useState(current?.title ?? 'Cash discipline sprint')
   const [industry, setIndustry] = useState(current?.industry ?? 'saas')
   const [difficulty, setDifficulty] = useState(current?.difficulty ?? 'standard')
   const [startingCash, setStartingCash] = useState(String(current?.startingCash ?? 5_000_000))
   const [months, setMonths] = useState(String(current?.months ?? 12))
   const [objectives, setObjectives] = useState((current?.objectives ?? ['Reach break-even', 'Hold churn under 5%']).join('\n'))
+  const [seed, setSeed] = useState(current?.seed ? String(current.seed) : '')
 
   return (
     <section className="rounded-2xl border border-line bg-white p-4">
@@ -365,6 +398,9 @@ function ScenarioCard({
         <ShieldCheck className="size-4 text-brand-700" />
         <p className="font-display text-[14px] font-semibold">Scenario</p>
         {current?.title ? <span className="rounded-full bg-paper-3 px-2 py-0.5 text-[10px] font-bold text-ink-500">{current.title}</span> : null}
+        {current?.seed ? (
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-800">seed #{current.seed}</span>
+        ) : null}
       </div>
       <form
         onSubmit={(event) => {
@@ -375,6 +411,7 @@ function ScenarioCard({
             difficulty,
             startingCash: Number(startingCash) || 0,
             months: Number(months) || 12,
+            seed: Number(seed) || undefined,
             objectives: objectives.split('\n').map((line) => line.trim()).filter(Boolean),
           })
         }}
@@ -410,6 +447,16 @@ function ScenarioCard({
         <Field label="Months">
           <input type="number" min={1} max={60} value={months} onChange={(event) => setMonths(event.target.value)} className={inputClass} />
         </Field>
+        <Field label="Replay seed (blank = generate)">
+          <input
+            type="number"
+            min={1}
+            placeholder="auto"
+            value={seed}
+            onChange={(event) => setSeed(event.target.value)}
+            className={inputClass}
+          />
+        </Field>
         <Field label="Objectives (one per line)">
           <textarea
             value={objectives}
@@ -423,6 +470,10 @@ function ScenarioCard({
             <RefreshCcw className="size-3.5" />
             Assign to {cohort.studentIds.length} student{cohort.studentIds.length === 1 ? '' : 's'}
           </button>
+          <p className="mt-2 text-[10px] leading-relaxed text-ink-400">
+            The seed is shared by everyone in the cohort, so differences in the roster come from decisions,
+            not luck. Students see the seed on their onboarding screen; the roster flags any run that used a different one.
+          </p>
         </div>
       </form>
     </section>
@@ -442,14 +493,16 @@ function RosterCard({
   roster: RosterEntry[]
   busy: boolean
   onInvite: (value: string) => void
-  onGrade: (studentId: string, grade: number, feedback: string) => void
+  onGrade: (studentId: string, grade: number, rationale: string, rubric: Record<string, number>) => void
   onReset: (studentId: string) => void
   onExport: () => void
 }) {
   const [invite, setInvite] = useState('')
   const [grading, setGrading] = useState<string | null>(null)
-  const [grade, setGrade] = useState('')
-  const [feedback, setFeedback] = useState('')
+  const [rubric, setRubric] = useState<RubricScores>(DEFAULT_RUBRIC)
+  const [rationale, setRationale] = useState('')
+  const previewGrade = localGrade(rubric)
+  const rationaleReady = rationale.trim().length >= MIN_RATIONALE
 
   const average = roster.length ? Math.round(roster.reduce((total, entry) => total + entry.score, 0) / roster.length) : 0
 
@@ -503,6 +556,7 @@ function RosterCard({
                 <th className="px-2 py-2 text-right">Grade</th>
                 <th className="px-2 py-2 text-right">Cash</th>
                 <th className="px-2 py-2">Integrity</th>
+                <th className="px-2 py-2">Seed</th>
                 <th className="px-2 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -530,13 +584,30 @@ function RosterCard({
                       <p className="mt-1 text-[9.5px] text-ink-400">{number(entry.commits)} commits</p>
                     </td>
                     <td className="px-2 py-2">
+                      {entry.seed === null ? (
+                        <span className="text-[10px] text-ink-400">no run yet</span>
+                      ) : (
+                        <>
+                          <span className="tabular-nums text-ink-600">#{entry.seed}</span>
+                          <p
+                            className={clsx(
+                              'text-[9.5px] font-semibold',
+                              entry.seedMatch === true ? 'text-emerald-700' : entry.seedMatch === false ? 'text-[#9a6b12]' : 'text-ink-400',
+                            )}
+                          >
+                            {entry.seedMatch === true ? 'assigned seed' : entry.seedMatch === false ? 'different seed' : 'no scenario seed'}
+                          </p>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
                           onClick={() => {
                             setGrading(grading === entry.studentId ? null : entry.studentId)
-                            setGrade(entry.grade !== null ? String(entry.grade) : '')
-                            setFeedback(entry.feedback ?? '')
+                            setRubric({ ...DEFAULT_RUBRIC, ...(entry.rubric as Partial<RubricScores> | null) })
+                            setRationale(entry.rationale ?? '')
                           }}
                           className={buttonClass('ghost', 'sm')}
                         >
@@ -556,32 +627,58 @@ function RosterCard({
                         <form
                           onSubmit={(event) => {
                             event.preventDefault()
-                            const value = Number(grade)
-                            if (!Number.isFinite(value)) return
-                            onGrade(entry.studentId, value, feedback)
+                            if (!rationaleReady) return
+                            onGrade(entry.studentId, previewGrade, rationale.trim(), rubric)
                             setGrading(null)
                           }}
-                          className="mt-2 space-y-1.5 rounded-xl bg-paper-2 p-2"
+                          className="mt-2 w-[300px] space-y-1.5 rounded-xl bg-paper-2 p-2.5"
                         >
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={grade}
-                            onChange={(event) => setGrade(event.target.value)}
-                            aria-label={`Grade for ${entry.name}`}
-                            className={inputClass}
-                          />
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-400">Rubric</span>
+                            <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-bold text-lime">
+                              {previewGrade} / 100
+                            </span>
+                          </div>
+                          {RUBRIC.map((criterion) => (
+                            <label key={criterion.id} className="block" title={criterion.hint}>
+                              <span className="flex items-center justify-between text-[9.5px] font-semibold text-ink-500">
+                                <span>{criterion.label}</span>
+                                <span className="text-ink-300">{criterion.weight}%</span>
+                              </span>
+                              <select
+                                value={rubric[criterion.id]}
+                                onChange={(event) =>
+                                  setRubric((current) => ({ ...current, [criterion.id]: Number(event.target.value) as RubricScores['cash'] }))
+                                }
+                                aria-label={`${criterion.label} level for ${entry.name}`}
+                                className={clsx(inputClass, 'mt-0.5 h-8 text-[11px]')}
+                              >
+                                {RUBRIC_LEVELS.map((option) => (
+                                  <option key={option.level} value={option.level}>
+                                    {option.level} · {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
                           <textarea
-                            value={feedback}
-                            onChange={(event) => setFeedback(event.target.value)}
-                            rows={2}
-                            maxLength={500}
-                            placeholder="Feedback (optional)"
-                            aria-label={`Feedback for ${entry.name}`}
-                            className={clsx(inputClass, 'h-auto py-1.5')}
+                            value={rationale}
+                            onChange={(event) => setRationale(event.target.value)}
+                            rows={3}
+                            maxLength={800}
+                            required
+                            placeholder={`Rationale — required, at least ${MIN_RATIONALE} characters`}
+                            aria-label={`Rationale for ${entry.name}`}
+                            className={clsx(inputClass, 'h-auto py-1.5 text-[11px]')}
                           />
-                          <button type="submit" className={clsx(buttonClass('primary', 'sm'), 'w-full justify-center')}>
+                          <p className={clsx('text-[9px]', rationaleReady ? 'text-ink-400' : 'text-[#9a6b12]')}>
+                            {rationale.trim().length}/{MIN_RATIONALE} characters — stored with the grade and hashed into the audit chain.
+                          </p>
+                          <button
+                            type="submit"
+                            disabled={!rationaleReady}
+                            className={clsx(buttonClass('primary', 'sm'), 'w-full justify-center disabled:opacity-40')}
+                          >
                             Save grade
                           </button>
                         </form>

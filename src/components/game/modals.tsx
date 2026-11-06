@@ -119,6 +119,30 @@ export function ReportModal({
               <span className="text-[10.5px] font-semibold text-ink-500">Cash end of month</span>
               <span className="font-display text-[15px] font-semibold text-ink">{money(report.cashEnd)}</span>
             </div>
+            {report.invoiced > 0 ? (
+              <div className="mt-2 rounded-xl bg-paper-3/60 px-3 py-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-400">Invoices on terms</p>
+                <div className="mt-1.5 space-y-1 text-[10.5px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Invoiced (booked)</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.invoiced)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Collected in cash</span>
+                    <span className="font-semibold tabular-nums text-brand-700">{money(report.collected)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Still receivable</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.receivables)}</span>
+                  </div>
+                </div>
+                {report.overdue > 0 ? (
+                  <p className="mt-1.5 text-[9.5px] font-semibold text-[#9a6b12]">
+                    {report.overdue} invoice{report.overdue === 1 ? '' : 's'} missed the due date — expect roughly 80% next month.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -525,10 +549,12 @@ export function ResetModal({
   open,
   onClose,
   onConfirm,
+  onRestart,
 }: {
   open: boolean
   onClose: () => void
   onConfirm: () => void
+  onRestart: () => void
 }) {
   return (
     <Modal
@@ -544,7 +570,15 @@ export function ResetModal({
           You will start a fresh company. This run stays saved in this browser so you can reopen it later.
         </p>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <button
+        onClick={onRestart}
+        className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-brand-300 bg-brand-50 text-sm font-semibold text-brand-800 transition hover:bg-brand-100"
+      >
+        <RotateCcw className="size-4" />
+        Replay this scenario from the start
+      </button>
+      <p className="mt-1.5 text-center text-[10px] text-ink-400">Same seed, same market, same starting capital — decisions are what change.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           onClick={onClose}
           className="inline-flex h-11 items-center justify-center rounded-full border border-line bg-white text-sm font-semibold text-ink-600 transition hover:bg-paper-3"
@@ -555,8 +589,7 @@ export function ResetModal({
           onClick={onConfirm}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-ink text-sm font-semibold text-white transition hover:bg-ink-800"
         >
-          <RotateCcw className="size-4" />
-          Archive & restart
+          New company
         </button>
       </div>
     </Modal>

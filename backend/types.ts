@@ -192,7 +192,7 @@ export interface Company {
     currentLevel: number
     completedMissions: string[]
   }
-  simulation: { day: number; lastAdvancedAt: string; processedSchedules: string[] }
+  simulation: { day: number; lastAdvancedAt: string; processedSchedules: string[]; scenarioSeed?: number; runSeed?: number }
   notifications: Array<Record<string, unknown>>
   popups: Array<Record<string, unknown>>
   socialPosts: SocialPost[]
@@ -228,6 +228,12 @@ export interface ClassroomRecord {
   studentId: Id
   grade?: number
   feedback?: string
+  /** 1–4 per criterion, set when the instructor graded with the rubric. */
+  rubric?: Record<string, number>
+  /** Written justification. Required whenever a rubric grade is recorded. */
+  rationale?: string
+  /** Engine score at the moment of grading, so a delta can be reviewed later. */
+  engineScoreAtGrade?: number
   gradedBy?: Id
   gradedAt?: string
   resetAt?: string

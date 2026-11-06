@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
+import { devLoginEnabled, hashPassword, instructorCode, issueSession, playerForToken, revokeSession, throttleCheck, throttleFail, throttleReset, verifyPassword } from './auth.js'
 import { BEGINNER_LEVELS, stageSummary } from './stage.js'
 import { ALL_LEVELS, allStageSummaries } from './stages.js'
 import { loadDatabase, newId, now, saveDatabase } from './store.js'
@@ -12,6 +13,7 @@ import { IN_GAME_APPS } from './apps.js'
 import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthority, validateSnapshot, verifyChain, type RunSnapshot } from './authority.js'
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
 import { recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
+import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
 import type { Company, Database, Player } from './types.js'
 
@@ -37,8 +39,17 @@ async function body(request: IncomingMessage) {
 
 function auth(request: IncomingMessage, database: Database): Player | null {
   const token = request.headers.authorization?.replace(/^Bearer\s+/i, '')
-  const session = database.sessions.find((item) => item.token === token && item.expiresAt > now())
-  return session ? database.players.find((player) => player.id === session.playerId) ?? null : null
+  return playerForToken(database, token)
+}
+
+function requestToken(request: IncomingMessage): string {
+  return request.headers.authorization?.replace(/^Bearer\s+/i, '') ?? ''
+}
+
+/** Never leak the password hash (or the scrypt parameters) to a client. */
+function publicPlayer(player: Player) {
+  const { passwordHash: _passwordHash, ...rest } = player
+  return rest
 }
 
 function ownedCompany(database: Database, player: Player, id: string) {
@@ -106,6 +117,13 @@ function ledger(company: Company, type: Company['transactions'][number]['type'],
   company.journal.push({ id: newId('jrn'), account: type, debit: 0, credit: amountKobo, source, currency: 'NGN', amountKobo, createdAt: now() })
 }
 
+/** Coerce an instructor-supplied seed to a positive 31-bit integer (0/blank = generate one). */
+function scenarioSeed(raw: unknown): number {
+  const value = Math.round(Number(raw))
+  if (Number.isFinite(value) && value > 0) return Math.min(value, 2_147_483_647)
+  return Math.floor(Math.random() * 2_000_000_000) + 1
+}
+
 function createCompany(playerId: string, input: Record<string, unknown>): Company {
   required(input, ['name', 'sector', 'problem', 'solution', 'businessModel', 'ambition'])
   const timestamp = now()
@@ -127,20 +145,79 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (request.method === 'GET' && path === '/api/stages') { send(response, 200, { stages: allStageSummaries(stageSummary()) }); return }
   if (request.method === 'GET' && path === '/api/stages/beginner') { send(response, 200, stageSummary()); return }
   if (request.method === 'GET' && path === '/api/progression') { send(response, 200, { levels: ALL_LEVELS, stages: allStageSummaries(stageSummary()) }); return }
+  if (request.method === 'GET' && path === '/api/rubric') { send(response, 200, { criteria: RUBRIC, minRationale: MIN_RATIONALE, levels: { 1: 'Emerging', 2: 'Developing', 3: 'Proficient', 4: 'Exemplary' } }); return }
   if (request.method === 'GET' && path === '/api/apps') { send(response, 200, { apps: IN_GAME_APPS, fictionalBrands: true, disclaimer: 'These are fictional simulator brands.' }); return }
   if (request.method === 'GET' && path === '/api/city') { send(response, 200, database.city); return }
   if (request.method === 'GET' && path === '/api/marketplace') { send(response, 200, { listings: searchMarketplace(database.marketplace, url.searchParams), categories: [...new Set(database.marketplace.businesses.map((business) => business.category))], districts: [...new Set(database.marketplace.businesses.map((business) => business.district))] }); return }
   const marketplaceBusinessMatch = path.match(/^\/api\/marketplace\/businesses\/([^/]+)$/)
   if (request.method === 'GET' && marketplaceBusinessMatch) { const business = database.marketplace.businesses.find((item) => item.id === marketplaceBusinessMatch[1]); if (!business) { error(response, 404, 'Business not found.'); return } send(response, 200, { business, listings: database.marketplace.listings.filter((listing) => listing.businessId === business.id) }); return }
   if (request.method === 'GET' && path === '/api/companies/name-availability') { const name = String(url.searchParams.get('name') ?? '').trim(); const available = name.length >= 2 && !database.companies.some((company) => company.name.trim().toLowerCase() === name.toLowerCase()); send(response, 200, { available, name }); return }
+  if (request.method === 'POST' && path === '/api/auth/register') {
+    const input = await body(request)
+    const accountEmail = String(input.accountEmail ?? '').trim().toLowerCase()
+    const password = String(input.password ?? '')
+    const name = String(input.name ?? '').trim().slice(0, 80)
+    if (!name) { error(response, 400, 'Tell us your name.'); return }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(accountEmail)) { error(response, 400, 'A valid email address is required.'); return }
+    if (password.length < 8) { error(response, 400, 'Choose a password of at least 8 characters.'); return }
+    if (database.players.some((item) => item.accountEmail?.toLowerCase() === accountEmail)) {
+      error(response, 409, 'An account already exists for that email. Sign in instead.'); return
+    }
+    const wantsInstructor = input.role === 'instructor' || input.role === 'admin'
+    const expectedCode = instructorCode()
+    if (wantsInstructor) {
+      if (!expectedCode || String(input.instructorCode ?? '') !== expectedCode) {
+        error(response, 403, 'Instructor accounts need a valid instructor code from your school.'); return
+      }
+    }
+    const role: Player['role'] = wantsInstructor ? (input.role === 'admin' ? 'admin' : 'instructor') : 'learner'
+    const player: Player = {
+      id: newId('plr'), name, role,
+      firstName: String(input.firstName ?? name.split(' ')[0] ?? ''), lastName: String(input.lastName ?? name.split(' ').slice(1).join(' ')), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'),
+      accountEmail, passwordHash: hashPassword(password), createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 },
+    }
+    database.players.push(player)
+    const session = issueSession(database, player.id)
+    await saveDatabase(database)
+    send(response, 201, { player: publicPlayer(player), token: session.token, expiresAt: session.expiresAt }); return
+  }
+  if (request.method === 'POST' && path === '/api/auth/login') {
+    const input = await body(request)
+    const accountEmail = String(input.accountEmail ?? '').trim().toLowerCase()
+    const password = String(input.password ?? '')
+    const key = `login:${accountEmail}`
+    const limit = throttleCheck(key)
+    if (!limit.allowed) { response.setHeader('retry-after', String(limit.retryAfterSeconds)); error(response, 429, 'Too many attempts. Wait a few minutes before trying again.'); return }
+    const player = database.players.find((item) => item.accountEmail?.toLowerCase() === accountEmail)
+    const verdict = player ? verifyPassword(password, player.passwordHash) : { ok: false, needsRehash: false }
+    if (!player || !verdict.ok) {
+      throttleFail(key)
+      error(response, 401, 'Email or password is incorrect.'); return
+    }
+    throttleReset(key)
+    if (verdict.needsRehash) player.passwordHash = hashPassword(password)
+    const session = issueSession(database, player.id)
+    await saveDatabase(database)
+    send(response, 200, { player: publicPlayer(player), token: session.token, expiresAt: session.expiresAt }); return
+  }
   if (request.method === 'POST' && path === '/api/auth/dev-login') {
+    if (!devLoginEnabled()) { error(response, 403, 'Development sign-in is disabled. Create an account or sign in.'); return }
     const input = await body(request); const requestedRole = String(input.role ?? 'learner'); const role: Player['role'] = requestedRole === 'instructor' || requestedRole === 'admin' ? requestedRole : 'learner'
-    const player: Player = { id: newId('plr'), name: String(input.name ?? 'Founder'), role, firstName: String(input.firstName ?? ''), lastName: String(input.lastName ?? ''), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'), accountEmail: String(input.accountEmail ?? ''), passwordHash: input.password ? createHash('sha256').update(String(input.password)).digest('hex') : undefined, createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }; database.players.push(player)
-    const token = newId('session'); database.sessions.push({ token, playerId: player.id, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }); await saveDatabase(database); send(response, 201, { player, token }); return
+    const accountEmail = String(input.accountEmail ?? '').trim().toLowerCase()
+    const existing = accountEmail ? database.players.find((item) => item.accountEmail?.toLowerCase() === accountEmail) : undefined
+    const player: Player = existing ?? { id: newId('plr'), name: String(input.name ?? 'Founder'), role, firstName: String(input.firstName ?? ''), lastName: String(input.lastName ?? ''), nickname: String(input.nickname ?? ''), avatar: String(input.avatar ?? 'founder-1'), accountEmail, passwordHash: input.password ? hashPassword(String(input.password)) : undefined, createdAt: now(), wallet: 25_000_000, progression: { xp: 0, reputation: 0 } }
+    if (!existing) database.players.push(player)
+    const session = issueSession(database, player.id)
+    await saveDatabase(database); send(response, existing ? 200 : 201, { player: publicPlayer(player), token: session.token, expiresAt: session.expiresAt, dev: true }); return
+  }
+  if (request.method === 'POST' && path === '/api/auth/logout') {
+    revokeSession(database, requestToken(request))
+    await saveDatabase(database)
+    send(response, 200, { signedOut: true }); return
   }
   const player = auth(request, database)
-  if (!player) { error(response, 401, 'Authentication required. Use POST /api/auth/dev-login for a local session.'); return }
-  if (request.method === 'GET' && path === '/api/me') { send(response, 200, player); return }
+  if (!player) { error(response, 401, 'Authentication required. Sign in to continue.'); return }
+  if (request.method === 'GET' && path === '/api/me') { send(response, 200, publicPlayer(player)); return }
   if (path === '/api/classes' && request.method === 'GET') {
     const classrooms = database.classes.filter((item) => item.lecturerId === player.id || item.studentIds.includes(player.id))
     send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: isInstructor(player) ? rosterFor(database, item) : undefined })) }); return
@@ -184,30 +261,62 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         months: Math.max(1, Math.min(60, Number(input.months ?? 12))),
         deadline: input.deadline ? String(input.deadline) : null,
         objectives: Array.isArray(input.objectives) ? input.objectives.slice(0, 10).map((item) => String(item).slice(0, 160)) : [],
+        // The seed is what makes the cohort comparable: every student gets the
+        // same market, the same starting conditions and the same event stream.
+        seed: scenarioSeed(input.seed),
         assignedAt: now(),
         assignedBy: player.id,
       }
-      for (const studentId of classroom.studentIds) recordFor(classroom, studentId).assignedAt = classroom.scenario.assignedAt as string
+      const assignedSeed = classroom.scenario.seed as number
+      for (const studentId of classroom.studentIds) {
+        recordFor(classroom, studentId).assignedAt = classroom.scenario.assignedAt as string
+        const studentCompany = database.companies.filter((item) => item.playerId === studentId).pop()
+        if (studentCompany) studentCompany.simulation.scenarioSeed = assignedSeed
+      }
       await saveDatabase(database); send(response, 200, classroom); return
     }
     if (request.method === 'POST' && action === 'grade') {
       if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
-      const input = await body(request); required(input, ['studentId', 'grade'])
+      const input = await body(request); required(input, ['studentId'])
       const studentId = String(input.studentId)
       if (!classroom.studentIds.includes(studentId)) { error(response, 404, 'That student is not in this cohort.'); return }
-      const grade = Math.round(Number(input.grade))
+
+      // A rubric grade replaces the raw number: it must be complete, and it must
+      // be justified in writing.
+      const rubric = input.rubric === undefined ? null : parseRubric(input.rubric)
+      if (input.rubric !== undefined && !rubric) { error(response, 400, 'Every rubric criterion needs a level from 1 to 4.'); return }
+      const rationale = String(input.rationale ?? input.feedback ?? '').trim().slice(0, 2000)
+      if (rubric && rationale.length < MIN_RATIONALE) {
+        error(response, 400, `A rubric grade needs a written rationale of at least ${MIN_RATIONALE} characters.`); return
+      }
+      const requested = input.grade === undefined ? undefined : Math.round(Number(input.grade))
+      if (!rubric && (requested === undefined || !Number.isFinite(requested))) { error(response, 400, 'Provide a grade or a complete rubric.'); return }
+      const grade = rubric ? rubricGrade(rubric) : (requested as number)
       if (!Number.isFinite(grade) || grade < 0 || grade > 100) { error(response, 400, 'Grade must be between 0 and 100.'); return }
+
       const record = recordFor(classroom, studentId)
       record.grade = grade
-      record.feedback = String(input.feedback ?? '').slice(0, 1000)
+      record.feedback = String(input.feedback ?? rationale).slice(0, 1000)
+      record.rubric = rubric ?? undefined
+      record.rationale = rationale || undefined
       record.gradedBy = player.id
       record.gradedAt = now()
       const company = database.companies.filter((item) => item.playerId === studentId).pop()
       if (company) {
-        appendAudit(company, 'instructor_grade', player.id, { grade, feedbackLength: record.feedback.length, cohortId: classroom.id })
+        const engineScore = authorityOf(company).score
+        record.engineScoreAtGrade = engineScore
+        const rationaleDigest = createHash('sha256').update(rationale).digest('hex').slice(0, 16)
+        appendAudit(company, 'instructor_grade', player.id, {
+          grade,
+          cohortId: classroom.id,
+          engineScore,
+          rubric: rubric ?? null,
+          rationaleLength: rationale.length,
+          rationaleDigest,
+        })
         company.notifications.unshift({ id: newId('note'), type: 'grade_recorded', priority: 'important', message: `Your instructor recorded a grade of ${grade}.`, createdAt: now() })
       }
-      await saveDatabase(database); send(response, 200, { ...record, roster: rosterFor(database, classroom) }); return
+      await saveDatabase(database); send(response, 200, { ...record, breakdown: rubric ? rubricBreakdown(rubric) : null, roster: rosterFor(database, classroom) }); return
     }
     if (request.method === 'POST' && action === 'reset') {
       if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
@@ -240,6 +349,8 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       company.expensesKobo = 0; company.expenses = 0
       company.authorityViolations = []
       company.simulation.day = start.day
+      company.simulation.scenarioSeed = start.seed ?? company.simulation.scenarioSeed
+      company.simulation.runSeed = start.seed ?? undefined
       recordFor(classroom, studentId).resetAt = now()
       appendAudit(company, 'cohort_run_reset', player.id, { cohortId: classroom.id, startingCashKobo: company.authority.cashKobo })
       company.notifications.unshift({ id: newId('note'), type: 'run_reset', priority: 'critical', message: 'Your instructor reset the scenario to its starting conditions.', createdAt: now() })
@@ -324,11 +435,13 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     if (request.method === 'PUT') {
       if (company.playerId !== player.id) { error(response, 403, 'Only the company owner can commit a run.'); return }
       const input = await body(request) as Partial<RunSnapshot>
+      const runSeed = Number(input.seed)
+      if (Number.isFinite(runSeed) && runSeed > 0) company.simulation.runSeed = Math.round(runSeed)
       const result = validateSnapshot(company, input)
       company.authority = result.authority
       if (result.violations.length) company.authorityViolations = [...result.violations, ...(company.authorityViolations ?? [])].slice(0, 20)
       applyCanonical(company, result.canonical)
-      appendAudit(company, 'run_commit', player.id, { month: result.canonical.month, score: result.score, tampered: result.tampered, violations: result.violations.map((item) => item.code) })
+      appendAudit(company, 'run_commit', player.id, { month: result.canonical.month, score: result.score, tampered: result.tampered, violations: result.violations.map((item) => item.code), seed: company.simulation.runSeed ?? null })
       await saveDatabase(database)
       send(response, 200, {
         accepted: !result.tampered,
@@ -338,6 +451,8 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         score: result.score,
         violations: result.violations,
         integrity: verifyChain(company),
+        seed: company.simulation.runSeed ?? null,
+        scenarioSeed: company.simulation.scenarioSeed ?? null,
       }); return
     }
     error(response, 405, 'Use GET or PUT on a company run.'); return

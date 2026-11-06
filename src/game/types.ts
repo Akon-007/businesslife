@@ -236,6 +236,25 @@ export interface LogEntry {
   kind: 'finance' | 'team' | 'market' | 'funding' | 'crisis' | 'milestone' | 'world'
 }
 
+/**
+ * Customer invoices. Revenue is recognised when the sale happens; cash only
+ * arrives when the invoice is due and paid. That gap is the receivable.
+ */
+export interface Invoice {
+  id: string
+  /** Game month the sale happened in (0-based, matches GameState.month). */
+  issuedMonth: number
+  /** Game month the money is expected. */
+  dueMonth: number
+  amount: number
+  terms: 0 | 15 | 30 | 45
+  customer: string
+  status: 'open' | 'overdue' | 'paid'
+  paidMonth: number | null
+  /** Cash actually collected — late payers can settle short. */
+  collected: number
+}
+
 export interface Snapshot {
   month: number
   cash: number
@@ -246,6 +265,10 @@ export interface Snapshot {
   reputation: number
   morale: number
   quality: number
+  /** Cash collected from customers this month (revenue is accrued). */
+  collected?: number
+  /** Invoiced but not yet collected at month close. */
+  receivables?: number
 }
 
 export interface ServerAuthority {
@@ -261,6 +284,8 @@ export interface ServerAuthority {
 export interface GameState {
   backendCompanyId?: string
   authority?: ServerAuthority
+  /** Seed for the deterministic engine. Same seed + same decisions = same run. */
+  seed: number
   version: number
   status: GameStatus
   endedReason?: string
@@ -296,6 +321,10 @@ export interface GameState {
   totalRaised: number
   emergencyLoans: number
   pendingCrisis: CrisisState | null
+  /** Outstanding customer invoices, oldest first. */
+  invoices: Invoice[]
+  /** Total ₦ invoiced and not yet collected. */
+  receivables: number
   seenCrises: string[]
   log: LogEntry[]
   history: Snapshot[]
@@ -340,6 +369,11 @@ export interface MonthReport {
   stockout: boolean
   dealsWon: number
   branchDemand: number
+  /** Accrual revenue vs cash actually banked this month. */
+  invoiced: number
+  collected: number
+  receivables: number
+  overdue: number
 }
 
 export interface GameMetrics {

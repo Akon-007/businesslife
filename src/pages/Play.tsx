@@ -129,6 +129,7 @@ function GameBoard({ game }: { game: GameState }) {
   const advance = useGame((state) => state.advance)
   const reset = useGame((state) => state.reset)
   const hydrateAuthority = useGame((state) => state.hydrateAuthority)
+  const restartScenario = useGame((state) => state.restartScenario)
   const resolve = useGame((state) => state.resolve)
   const dismissReport = useGame((state) => state.dismissReport)
   const notify = useGame((state) => state.notify)
@@ -317,6 +318,10 @@ function GameBoard({ game }: { game: GameState }) {
         onConfirm={() => {
           setResetOpen(false)
           reset()
+        }}
+        onRestart={() => {
+          setResetOpen(false)
+          restartScenario()
         }}
       />
       <Toast toast={toast} onClear={clearToast} />
@@ -525,7 +530,10 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
     <div className="glass-strong rounded-2xl p-3.5">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-400">Meridian City</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-400">
+            Meridian City
+            {game.seed ? <span className="ml-1.5 font-bold normal-case tracking-normal text-ink-300">· seed #{game.seed}</span> : null}
+          </p>
           <p className="mt-0.5 font-display text-[17px] font-semibold leading-tight text-ink">
             Day {game.day}
             <span className="text-[12px] font-medium text-ink-400"> · month {game.month + 1}</span>

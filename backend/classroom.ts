@@ -19,6 +19,15 @@ export interface RosterEntry {
   gradedAt: string | null
   integrity: 'verified' | 'flagged' | 'no-data' | 'broken-chain'
   violations: number
+  /** Seed the student's latest run was generated with (null until first commit). */
+  seed: number | null
+  /** Does that seed match the assigned scenario seed? null = not comparable yet. */
+  seedMatch: boolean | null
+  /** 1–4 scores per criterion when the instructor used the rubric. */
+  rubric: Record<string, number> | null
+  rationale: string | null
+  /** Engine score when the grade was recorded, for a documented delta. */
+  engineScoreAtGrade: number | null
 }
 
 export function recordFor(classroom: ClassRoom, studentId: string): ClassroomRecord {
@@ -56,6 +65,11 @@ export function rosterFor(database: Database, classroom: ClassRoom): RosterEntry
         gradedAt: record?.gradedAt ?? null,
         integrity: 'no-data' as const,
         violations: 0,
+        seed: null,
+        seedMatch: null,
+        rubric: null,
+        rationale: null,
+        engineScoreAtGrade: null,
       }
     }
     const authority = authorityOf(company)
@@ -79,8 +93,26 @@ export function rosterFor(database: Database, classroom: ClassRoom): RosterEntry
       gradedAt: record?.gradedAt ?? null,
       integrity: !chain.valid ? ('broken-chain' as const) : violations ? ('flagged' as const) : ('verified' as const),
       violations,
+      seed: company.simulation.runSeed ?? null,
+      seedMatch: seedComparison(company, classroom),
+      rubric: record?.rubric ?? null,
+      rationale: record?.rationale ?? null,
+      engineScoreAtGrade: record?.engineScoreAtGrade ?? null,
     }
   })
+}
+
+/**
+ * Did this student run the scenario seed their instructor assigned?
+ * `null` means the question cannot be answered yet (no scenario seed, or the
+ * student has not committed a run).
+ */
+export function seedComparison(company: { simulation?: { scenarioSeed?: number; runSeed?: number } }, classroom: { scenario: Record<string, unknown> | null }): boolean | null {
+  const assigned = Number(classroom.scenario?.seed)
+  const run = Number(company.simulation?.runSeed)
+  if (!Number.isFinite(assigned) || assigned <= 0) return null
+  if (!Number.isFinite(run) || run <= 0) return null
+  return Math.round(assigned) === Math.round(run)
 }
 
 export function csvEscape(value: unknown): string {
@@ -89,11 +121,13 @@ export function csvEscape(value: unknown): string {
 }
 
 export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string {
-  const header = ['cohort', 'scenario', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'feedback', 'last_commit']
+  const header = ['cohort', 'scenario', 'scenario_seed', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'grade_minus_engine', 'rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'seed_match', 'feedback', 'last_commit']
   const scenario = classroom.scenario ? String((classroom.scenario as { title?: string }).title ?? 'custom') : 'none'
+  const scenarioSeed = classroom.scenario ? String((classroom.scenario as { seed?: number }).seed ?? '') : ''
   const rows = entries.map((entry) => [
     classroom.name,
     scenario,
+    scenarioSeed,
     entry.studentId,
     entry.name,
     entry.email,
@@ -101,22 +135,31 @@ export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string 
     entry.month,
     entry.score,
     entry.grade ?? '',
+    entry.grade === null || entry.engineScoreAtGrade === null ? '' : entry.grade - entry.engineScoreAtGrade,
+    entry.rubric?.cash ?? '',
+    entry.rubric?.customers ?? '',
+    entry.rubric?.operations ?? '',
+    entry.rubric?.judgement ?? '',
+    entry.rationale ?? '',
     entry.cash,
     entry.revenue,
     entry.status,
     entry.commits,
     entry.integrity,
+    entry.seedMatch === null ? '' : entry.seedMatch ? 'yes' : 'no',
     entry.feedback ?? '',
     entry.updatedAt ?? '',
   ])
   return [header, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n')
 }
 
-export function scenarioStart(scenario: Record<string, unknown> | null): { startingCashKobo: number; month: number; day: number } {
+export function scenarioStart(scenario: Record<string, unknown> | null): { startingCashKobo: number; month: number; day: number; seed: number | null } {
   const cashNaira = Number(scenario?.startingCash ?? 0)
+  const seed = Number(scenario?.seed)
   return {
     startingCashKobo: Number.isFinite(cashNaira) && cashNaira > 0 ? Math.round(cashNaira * 100) : 0,
     month: 0,
     day: 1,
+    seed: Number.isFinite(seed) && seed > 0 ? Math.round(seed) : null,
   }
 }
