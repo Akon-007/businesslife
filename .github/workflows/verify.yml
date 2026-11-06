@@ -53,7 +53,7 @@ jobs:
           echo "API did not start"
           exit 1
 
-      - name: Verify (authority, auth, scoring, determinism, cash timing, legit play)
+      - name: Verify (authority, auth, scoring, determinism, cash timing, statements, render, contrast, replay, legit play)
         run: npm run verify
 
       - name: Upload API log on failure
