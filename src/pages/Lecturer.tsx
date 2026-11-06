@@ -150,7 +150,7 @@ export default function Lecturer() {
         </div>
       </header>
 
-      <main className="container-page grid gap-4 py-6 lg:grid-cols-[300px_1fr]">
+      <main id="main" className="container-page grid gap-4 py-6 lg:grid-cols-[300px_1fr]">
         <aside className="space-y-3">
           <CreateCohort
             busy={busy}

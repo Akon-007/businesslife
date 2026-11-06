@@ -636,7 +636,12 @@ export function Toast({ toast, onClear }: { toast: { id: string; message: string
   if (!toast) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center px-4 lg:bottom-8">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center px-4 lg:bottom-8"
+    >
       <div
         className={clsx(
           'animate-rise pointer-events-auto flex items-center gap-2 rounded-full px-4 py-2.5 text-[12px] font-semibold shadow-float ring-1',
@@ -646,7 +651,7 @@ export function Toast({ toast, onClear }: { toast: { id: string; message: string
         )}
       >
         {toast.tone === 'good' ? (
-          <BadgeCheck className="size-4" />
+          <BadgeCheck className="size-4" aria-hidden />
         ) : toast.tone === 'bad' ? (
           <ShieldAlert className="size-4" />
         ) : (

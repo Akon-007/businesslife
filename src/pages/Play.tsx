@@ -220,7 +220,7 @@ function GameBoard({ game }: { game: GameState }) {
     <div className="min-h-[100svh] bg-paper lg:flex lg:h-[100svh] lg:flex-col lg:overflow-hidden">
       <TopBar game={game} metrics={metrics} onHelp={() => setHelpOpen(true)} onReset={() => setResetOpen(true)} />
 
-      <div className="relative h-[46svh] min-h-[340px] shrink-0 overflow-hidden bg-sky lg:h-auto lg:min-h-0 lg:flex-1">
+      <main id="main" tabIndex={-1} className="relative h-[46svh] min-h-[340px] shrink-0 overflow-hidden bg-sky outline-none lg:h-auto lg:min-h-0 lg:flex-1">
         <CityMap
           className="absolute inset-0 h-full w-full"
           variant="game"
@@ -278,7 +278,7 @@ function GameBoard({ game }: { game: GameState }) {
             </button>
           </div>
         )}
-      </div>
+      </main>
 
       <MobileSummary game={game} metrics={metrics} insights={insights} onNavigate={setPanel} onHelp={() => setHelpOpen(true)} />
 

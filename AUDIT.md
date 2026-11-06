@@ -418,3 +418,18 @@ interaction test was run against the retheme. The contrast gate is arithmetic on
 palette pairs clear AA, not that every component picked the right pair, and it says nothing about layout.
 Motion was left alone apart from the existing `prefers-reduced-motion` override; `npm run lint` and
 `npm run build` are clean.
+
+
+### 9.10 Accessibility pass (§12.3) — **partial**
+
+| Before | After |
+|---|---|
+| Dialogs announced themselves but let Tab escape to the page behind, and focus was lost on close | `useDialogFocus` (shared by `Modal` and the game `Drawer`): focus moves to the first control, Tab and Shift+Tab cycle inside, Escape closes the dismissible ones, the page behind cannot scroll, and focus returns to the element that opened the dialog |
+| Toasts appeared and vanished silently | The toast is a `role="status"` live region with `aria-atomic`, so screen readers announce it without stealing focus |
+| No way past the navigation | A "Skip to content" link (visible on focus) targeting `#main`; the landing page, instructor portal and the city view are now `<main id="main">` landmarks |
+| Financial tables were coloured only | Statements are real tables with `<caption>`, `<th scope>` and a written status next to the colour; the Finance centre tablist supports Left/Right arrow keys with `aria-selected` and roving `tabIndex` |
+| Gold was used as text on white | Fixed, and turned into a gate: `npm run verify:contrast` fails the build if a token pair drops below AA |
+
+**Honest boundary:** this is a code-level pass. There is no axe/Lighthouse run, no screen-reader session
+and no keyboard walkthrough in a real browser here — the environment has no headless browser. Automated
+contrast is checked; automated a11y is not.

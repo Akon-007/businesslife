@@ -59,6 +59,7 @@ import { money, monthLabel, number, percent } from '../../lib/format'
 import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
 import { FinancePanel } from './FinancePanel'
+import { useDialogFocus } from '../ui/useDialogFocus'
 
 export type PanelId =
   | 'company'
@@ -189,6 +190,7 @@ export function Drawer({
   const meta = panel ? PANEL_META[panel] : null
   const game = useGame((state) => state.game)
   const ended = !!game && game.status !== 'active'
+  const dialogRef = useDialogFocus<HTMLElement>(!!panel, onClose)
 
   return (
     <AnimatePresence>
@@ -205,9 +207,11 @@ export function Drawer({
             className="absolute inset-0 bg-ink-950/45 backdrop-blur-[3px]"
           />
           <motion.aside
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={meta.title}
+            tabIndex={-1}
             initial={{ x: 56, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 48, opacity: 0 }}

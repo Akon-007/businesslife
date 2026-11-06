@@ -52,15 +52,17 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-paper">
       <SiteNav overlay />
-      <Hero />
-      <AudienceStrip />
-      <HowItWorks />
-      <WorldSection />
-      <MiniCase />
-      <Programmes />
-      <Stories />
-      <Faq />
-      <FinalCta />
+      <main id="main">
+        <Hero />
+        <AudienceStrip />
+        <HowItWorks />
+        <WorldSection />
+        <MiniCase />
+        <Programmes />
+        <Stories />
+        <Faq />
+        <FinalCta />
+      </main>
       <SiteFooter />
     </div>
   )
