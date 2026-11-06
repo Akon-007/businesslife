@@ -51,6 +51,7 @@ GitHub Actions runs the same suite on every push and pull request
 | Accounts, sessions, password hashing | `backend/auth.ts` |
 | Grading rubric and rationale rules | `backend/rubric.ts` (client mirror: `src/game/rubric.ts`) |
 | Instructor portal | `src/pages/Lecturer.tsx` |
+| External requirements (DB, email, DNS, keys, compliance) | `docs/requirements.md` |
 | Design tokens, fonts, contrast gate | `src/index.css`, `scripts/verify-contrast.mjs` |
 
 ### Server authority
