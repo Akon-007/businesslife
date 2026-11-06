@@ -52,15 +52,17 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-paper">
       <SiteNav overlay />
-      <Hero />
-      <AudienceStrip />
-      <HowItWorks />
-      <WorldSection />
-      <MiniCase />
-      <Programmes />
-      <Stories />
-      <Faq />
-      <FinalCta />
+      <main id="main">
+        <Hero />
+        <AudienceStrip />
+        <HowItWorks />
+        <WorldSection />
+        <MiniCase />
+        <Programmes />
+        <Stories />
+        <Faq />
+        <FinalCta />
+      </main>
       <SiteFooter />
     </div>
   )
@@ -88,7 +90,7 @@ function Hero() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-500 opacity-60" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-brand-500" />
               </span>
-              AI-powered business simulation
+              Rules-based business simulation · AI-gateway advisor
             </div>
 
             <h1 className="mt-5 font-display text-[42px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[56px] lg:text-[64px]">
@@ -264,7 +266,7 @@ const STEPS = [
   {
     number: '03',
     title: 'Read the story',
-    copy: 'A monthly report explains what moved and why. Nova, your AI advisor, flags the constraint. Thirty-six months later, you get a scorecard you earned.',
+    copy: 'A monthly report explains what moved and why. Nova, your advisor, flags the constraint — she answers only from server-verified numbers, through a pluggable AI gateway. Thirty-six months later, you get a scorecard you earned.',
     icon: BookOpenText,
     visual: <ReportPreview />,
   },
@@ -408,7 +410,7 @@ function ReportPreview() {
         <span className="rounded-full bg-coral/10 px-2 py-1 text-[9px] font-bold text-coral">−₦11.2m</span>
       </div>
       <div className="mt-2 -mx-1">
-        <Sparkline data={[148, 155, 150, 162, 158, 170, 159, 158]} color="#e05a3f" height={42} />
+        <Sparkline data={[148, 155, 150, 162, 158, 170, 159, 158]} color="#e5484d" height={42} />
       </div>
       <div className="mt-2 rounded-xl bg-paper-3/80 p-2.5">
         <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-brand-700">
@@ -518,9 +520,9 @@ function CashVisual() {
         <Sparkline data={[92, 108, 103, 126, 118, 145, 160, 152, 178, 205, 196, 238]} height={56} />
       </div>
       <div className="space-y-2.5 rounded-xl bg-white p-3 ring-1 ring-line">
-        <BarRow label="Revenue" value={24_000} max={30_000} color="#12a060" valueLabel="₦24.0m" />
-        <BarRow label="Payroll" value={19_000} max={30_000} color="#7c6cf6" valueLabel="₦19.0m" />
-        <BarRow label="Other costs" value={12_000} max={30_000} color="#ffc94a" valueLabel="₦12.0m" />
+        <BarRow label="Revenue" value={24_000} max={30_000} color="#17c995" valueLabel="₦24.0m" />
+        <BarRow label="Payroll" value={19_000} max={30_000} color="#5a4be0" valueLabel="₦19.0m" />
+        <BarRow label="Other costs" value={12_000} max={30_000} color="#f5a623" valueLabel="₦12.0m" />
         <div className="flex items-center justify-between border-t border-line pt-2 text-[10.5px]">
           <span className="font-semibold text-ink-500">Runway</span>
           <span className="font-bold text-ink">11.4 months</span>
@@ -541,7 +543,7 @@ function HireVisual() {
         <div key={person.name} className="flex items-center gap-2.5 rounded-xl bg-paper-3/60 p-2.5 ring-1 ring-line/60">
           <span
             className="grid size-8 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white"
-            style={{ background: ['#0b8550', '#7c6cf6', '#2f80c7'][index] }}
+            style={{ background: ['#0f9c72', '#5a4be0', '#176bff'][index] }}
           >
             {person.name.split(' ').map((part) => part[0]).join('')}
           </span>
@@ -643,7 +645,7 @@ function AdvisorVisual() {
           <Compass className="size-4" />
         </span>
         <div>
-          <p className="text-[11px] font-bold">Nova · AI chief of staff</p>
+          <p className="text-[11px] font-bold">Nova · Chief of staff</p>
           <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Reads your monthly numbers</p>
         </div>
         <span className="ml-auto flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[8.5px] font-bold text-lime">
@@ -889,7 +891,7 @@ const STORIES = [
       'I had read about runway a hundred times. I only understood it the month I ran out — and had to explain to my team why payroll was late.',
     name: 'Adaeze O.',
     role: 'MBA candidate, Class of 2027',
-    color: '#0b8550',
+    color: '#0f9c72',
     stat: 'Ran out of cash in month 14',
   },
   {
@@ -897,7 +899,7 @@ const STORIES = [
       'The first supplier shock hit and I did what I do at work: nothing, and hoped. The sim made me feel the cost in the next three months.',
     name: 'Tomi A.',
     role: 'Founder, consumer brand',
-    color: '#7c6cf6',
+    color: '#5a4be0',
     stat: 'Rebuilt with 9 months runway',
   },
   {
@@ -905,7 +907,7 @@ const STORIES = [
       'My students argued about pricing for forty minutes. Nobody asked what the answer was for the exam. That is the whole point.',
     name: 'Daniel K.',
     role: 'Entrepreneurship lecturer',
-    color: '#2f80c7',
+    color: '#176bff',
     stat: 'Used in a 60-student cohort',
   },
 ]
@@ -982,8 +984,8 @@ const FAQS = [
     a: 'Yes. Cohort runs, facilitator guides and debrief reports are built for business schools, universities, accelerators and corporate learning teams. Reach out and we will set up a walkthrough for your programme.',
   },
   {
-    q: 'Is the AI advisor giving me financial advice?',
-    a: 'No. Nova is a coaching layer over the simulation. It points out patterns in your own numbers — runway, churn, capacity, morale — and suggests what to examine. BUSINESSLIFE is an educational simulation, not financial, legal or investment advice.',
+    q: 'Is Nova a real AI, and is she giving me financial advice?',
+    a: 'Nova is an advisor layer over a deterministic simulation: by default she is rule-based and runs with no external model, and the platform can be pointed at any OpenAI-compatible provider through its AI gateway. Either way she may only cite figures from your server-verified company record, she has no tools that can change game state, and she cannot reveal hidden data. BUSINESSLIFE is an educational simulation, not financial, legal or investment advice.',
   },
   {
     q: 'Is my company saved?',

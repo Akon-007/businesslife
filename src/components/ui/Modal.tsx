@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { X } from 'lucide-react'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
+import { useDialogFocus } from './useDialogFocus'
 
 export function Modal({
   open,
@@ -25,24 +26,9 @@ export function Modal({
   className?: string
   dark?: boolean
 }) {
-  const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && dismissible) onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const timer = window.setTimeout(() => ref.current?.focus(), 50)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previous
-      window.clearTimeout(timer)
-    }
-  }, [open, dismissible, onClose])
+  const descriptionId = useId()
+  const ref = useDialogFocus<HTMLDivElement>(open, onClose, dismissible)
 
   if (typeof document === 'undefined') return null
 
@@ -73,6 +59,7 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={title ? titleId : undefined}
+            aria-describedby={description ? descriptionId : undefined}
             tabIndex={-1}
             initial={{ opacity: 0, y: 24, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -95,7 +82,7 @@ export function Modal({
                     </h3>
                   )}
                   {description && (
-                    <p className={clsx('mt-1 text-sm leading-relaxed', dark ? 'text-white/65' : 'text-ink-500')}>
+                    <p id={descriptionId} className={clsx('mt-1 text-sm leading-relaxed', dark ? 'text-white/65' : 'text-ink-500')}>
                       {description}
                     </p>
                   )}

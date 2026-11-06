@@ -18,7 +18,9 @@ import {
   strategyById,
 } from './data'
 import { ALL_LEVELS } from './progression'
+import { BILL_SHARE, VENDORS, billDueMonth, buildStatements, openPayables, settleBills } from './accounting'
 import type {
+  Bill,
   Candidate,
   CrisisDef,
   CrisisState,
@@ -26,10 +28,12 @@ import type {
   DifficultyId,
   Effects,
   Employee,
+  FlowBucket,
   FounderBackgroundId,
   GameMetrics,
   GameState,
   IndustryId,
+  Invoice,
   InvestorOffer,
   LogEntry,
   MonthReport,
@@ -39,7 +43,8 @@ import type {
   BeginnerProgress,
   BeginnerMissionProgress,
 } from './types'
-import { clamp, money, number, pick, rand, uid } from '../lib/format'
+import { clamp, money, number, uid } from '../lib/format'
+import { hashSeed, newSeed, pickWith, randWith, rngFor, shuffledWith } from './random'
 
 export const RUN_LENGTH = Number.POSITIVE_INFINITY
 export const DAYS_PER_MONTH = 30
@@ -140,11 +145,11 @@ const makeEmployee = (candidate: Candidate, month: number): Employee => ({
   training: 0,
 })
 
-export function makeCandidate(role?: RoleId): Candidate {
-  const roleDef = role ? roleById(role) : pick(ROLES)
-  const skill = Math.round(rand(2.5, 9.2) * 10) / 10
+export function makeCandidate(role?: RoleId, rng: () => number = Math.random): Candidate {
+  const roleDef = role ? roleById(role) : pickWith(rng, ROLES)
+  const skill = Math.round(randWith(rng, 2.5, 9.2) * 10) / 10
   const salary = Math.round((roleDef.salaryMin + (skill / 10) * (roleDef.salaryMax - roleDef.salaryMin)) / 100) * 100
-  const { name, background, quirk } = randomCandidateName()
+  const { name, background, quirk } = randomCandidateName(rng)
   return {
     id: uid(),
     name,
@@ -157,9 +162,8 @@ export function makeCandidate(role?: RoleId): Candidate {
   }
 }
 
-export function makeCandidatePool(seed?: number): Candidate[] {
-  const count = seed ?? 5
-  return Array.from({ length: count }, () => makeCandidate())
+export function makeCandidatePool(rng: () => number = Math.random, count = 5): Candidate[] {
+  return Array.from({ length: count }, () => makeCandidate(undefined, rng))
 }
 
 const DEAL_COMPANIES = [
@@ -170,18 +174,18 @@ const DEAL_COMPANIES = [
 
 const DEAL_CONTACTS = ['Ada', 'Tunde', 'Zainab', 'Kwame', 'Lina', 'Mateo', 'Priya', 'Noah', 'Nia', 'Omar']
 
-export function makeDeal(industry: IndustryId, month: number): Deal {
+export function makeDeal(industry: IndustryId, month: number, rng: () => number = Math.random): Deal {
   const def = industryById(industry)
-  const customers = Math.max(1, Math.round(rand(2, 6) * (def.price > 300 ? 0.5 : 1) * (def.marketReach > 40 ? 8 : 1) * 0.12))
+  const customers = Math.max(1, Math.round(randWith(rng, 2, 6) * (def.price > 300 ? 0.5 : 1) * (def.marketReach > 40 ? 8 : 1) * 0.12))
   const monthlyValue = customers * def.price
   return {
     id: uid(),
-    company: pick(DEAL_COMPANIES),
-    contact: `${pick(DEAL_CONTACTS)} ${pick(['Okafor', 'Mensah', 'Silva', 'Park', 'Haddad', 'Rossi', 'Chen'])}`,
+    company: pickWith(rng, DEAL_COMPANIES),
+    contact: `${pickWith(rng, DEAL_CONTACTS)} ${pickWith(rng, ['Okafor', 'Mensah', 'Silva', 'Park', 'Haddad', 'Rossi', 'Chen'])}`,
     customers,
-    value: Math.round((monthlyValue * rand(1.8, 4.2)) / 100) * 100,
-    stage: month === 0 ? 'lead' : pick(['lead', 'qualified', 'negotiation'] as const),
-    chance: Math.round(rand(0.24, 0.52) * 100) / 100,
+    value: Math.round((monthlyValue * randWith(rng, 1.8, 4.2)) / 100) * 100,
+    stage: month === 0 ? 'lead' : pickWith(rng, ['lead', 'qualified', 'negotiation'] as const),
+    chance: Math.round(randWith(rng, 0.24, 0.52) * 100) / 100,
     monthsOpen: 0,
     discount: false,
   }
@@ -199,6 +203,9 @@ export function startGame(input: {
   nickname?: string
   avatar?: string
   accountEmail?: string
+  seed?: number
+  /** Scenario starting capital (₦). Overrides the industry/strategy default. */
+  startingCash?: number
 }): GameState {
   const industry = industryById(input.industry)
   const strategy = strategyById(input.strategy ?? 'product')
@@ -206,14 +213,25 @@ export function startGame(input: {
   const difficulty = difficultyById(input.difficulty ?? 'standard')
   const startingQuality = clamp(industry.startingQuality + strategy.starting.quality + background.starting.quality, 15, 85)
   const startingReputation = clamp(48 + strategy.starting.reputation + background.starting.reputation, 10, 80)
-  const startingCash = Math.round(
+  const derivedCash = Math.round(
     (industry.startingCash + strategy.starting.cash + background.starting.cash) * difficulty.cashMult,
   )
-  const economyOffset = Math.floor(rand(0, 7))
+  const startingCash = Number.isFinite(input.startingCash) && (input.startingCash ?? 0) > 0
+    ? Math.round(input.startingCash as number)
+    : derivedCash
+  const seed = input.seed ?? newSeed()
+  const bootstrap = rngFor(seed, 'bootstrap')
+  const economyOffset = Math.floor(randWith(bootstrap, 0, 7))
   const suppliers = makeSuppliers(input.industry)
+  const startingCustomers =
+    industry.startingCustomers + strategy.starting.customers + background.starting.customers
 
   const base: GameState = {
     version: SAVE_VERSION,
+    seed,
+    journal: [],
+    journalComplete: true,
+    startingCash,
     status: 'active',
     founder: input.founder.trim() || 'Founder',
     firstName: input.firstName?.trim() || input.founder.trim().split(' ')[0] || 'Founder',
@@ -241,12 +259,24 @@ export function startGame(input: {
     valuation: 400_000,
     founderEquity: 100,
     team: [],
-    candidates: makeCandidatePool(),
+    candidates: makeCandidatePool(rngFor(seed, 'candidates', 0)),
     offers: [],
     lastRoundMonth: -3,
     totalRaised: 0,
     emergencyLoans: 0,
     pendingCrisis: null,
+    invoices: [],
+    receivables: 0,
+    bills: [],
+    payables: 0,
+    inventoryValue: industry.inventory
+      ? Math.round(1.6 * startingCustomers * industry.costPerCustomer)
+      : 0,
+    fixedAssets: 0,
+    paidInCapital: startingCash + (industry.inventory ? Math.round(1.6 * startingCustomers * industry.costPerCustomer) : 0),
+    retainedEarnings: 0,
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    statements: [],
     seenCrises: [],
     log: [],
     history: [],
@@ -256,7 +286,7 @@ export function startGame(input: {
     supplierId: suppliers[0].id,
     inventory: industry.inventory ? 1.6 : 0,
     restockMonths: industry.inventory ? 1 : 0,
-    pipeline: [makeDeal(input.industry, 0), makeDeal(input.industry, 0)],
+    pipeline: [makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 1)), makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 2))],
     pipelineWon: 0,
     competitors: makeCompetitors(input.industry),
     economy: economyForMonth(0, economyOffset),
@@ -441,30 +471,76 @@ export function newCustomersEstimate(state: GameState) {
   )
 }
 
+/**
+ * Scoring v2 (mirrors backend/authority.ts `scoreSnapshot`).
+ *
+ * Every component is normalised against a stated benchmark and capped, so the
+ * score responds to operating evidence instead of saturating on valuation.
+ * The server recomputes this same formula and is the authority for the score.
+ */
 function computeScore(state: GameState) {
-  const metrics = {
-    arr: state.customers * state.price * 12,
+  const last = state.history[state.history.length - 1]
+  const revenue = last?.revenue ?? state.customers * state.price
+  const costs = last?.costs ?? sum(state.team.map((member) => member.salary)) + (state.marketingSpend ?? 0) + (state.productSpend ?? 0) + (state.trainingSpend ?? 0) + state.team.length * 180
+  const burn = Math.max(0, costs - revenue)
+  const runway = burn > 0 ? state.cash / burn : 12
+  const teamSkill = sum(state.team.map((member) => member.skill * (member.level ?? 1)))
+  const debt = Math.max(0, state.debt ?? 0)
+  const raw =
+    clamp(revenue / 250_000, 0, 1) * 30 +
+    clamp(state.customers / 500, 0, 1) * 15 +
+    clamp(runway / 12, 0, 1) * 15 +
+    (clamp(state.quality, 0, 100) / 100) * 10 +
+    (clamp(state.reputation, 0, 100) / 100) * 10 +
+    clamp(state.valuation / 10_000_000, 0, 1) * 10 +
+    clamp(teamSkill / 100, 0, 1) * 5 +
+    (clamp(state.founderEquity ?? 100, 0, 100) / 100) * 5 -
+    clamp(debt / Math.max(1, revenue * 12), 0, 1) * 10
+  return Math.max(0, Math.round(clamp(raw, 0, 100) * 10) / 10)
+}
+
+/** Inputs the server needs to recompute and protect the score. */
+export function authorityPayload(state: GameState) {
+  const last = state.history[state.history.length - 1]
+  const revenue = last?.revenue ?? state.customers * state.price
+  const costs = last?.costs ?? sum(state.team.map((member) => member.salary)) + (state.marketingSpend ?? 0) + (state.productSpend ?? 0) + (state.trainingSpend ?? 0) + state.team.length * 180
+  return {
+    month: state.month,
+    day: state.day,
+    cashKobo: Math.round(state.cash * 100),
+    customers: Math.round(state.customers),
+    priceNaira: state.price,
+    revenueKobo: Math.round(revenue * 100),
+    expensesKobo: Math.round(costs * 100),
+    valuationKobo: Math.round(state.valuation * 100),
+    quality: state.quality,
+    reputation: state.reputation,
+    morale: state.morale,
+    teamSize: state.team.length,
+    teamSkill: Math.round(sum(state.team.map((member) => member.skill * (member.level ?? 1)))),
+    inventory: state.inventory ?? 0,
+    debtKobo: Math.round(Math.max(0, state.debt ?? 0) * 100),
+    founderEquity: state.founderEquity ?? 100,
+    status: state.status,
   }
-  return Math.max(
-    0,
-    Math.round(
-      state.valuation / 1_500 +
-        metrics.arr / 500 +
-        state.customers * 0.8 +
-        state.reputation * 14 +
-        state.quality * 10 +
-        state.cash / 2_000 +
-        state.founderEquity * 1.2 -
-        state.debt / 800 +
-        sum(state.team.map((member) => member.skill)) * 7 +
-        state.month * 25,
-    ),
-  )
+}
+
+/**
+ * Record a one-off cash movement that happens between month closes, so the
+ * cash-flow statement and the balance sheet still tie out.
+ */
+function recordFlow(state: GameState, key: keyof FlowBucket, amount: number): FlowBucket {
+  const flows = state.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 }
+  if (!Number.isFinite(amount) || amount === 0) return flows
+  return { ...flows, [key]: (flows[key] ?? 0) + amount }
 }
 
 export function applyEffects(state: GameState, effects: Effects): GameState {
   let next = { ...state }
-  if (effects.cash) next.cash += effects.cash
+  if (effects.cash) {
+    next.cash += effects.cash
+    next.flows = recordFlow(next, effects.cash < 0 ? 'expenses' : 'otherIncome', Math.abs(effects.cash))
+  }
   if (effects.customersPct) next.customers = Math.max(0, Math.round(next.customers * (1 + effects.customersPct)))
   if (effects.customersAdd) next.customers = Math.max(0, next.customers + effects.customersAdd)
   if (effects.quality) next.quality = clamp(next.quality + effects.quality, 0, 100)
@@ -488,8 +564,9 @@ export function applyEffects(state: GameState, effects: Effects): GameState {
 }
 
 function rollMicroEvent(state: GameState): { state: GameState; message?: string } {
-  if (Math.random() > 0.22) return { state }
-  const event = pick(WORLD_EVENTS)
+  const rng = rngFor(state.seed ?? 0, 'micro', state.month)
+  if (rng() > 0.22) return { state }
+  const event = pickWith(rng, WORLD_EVENTS)
   const next = applyEffects(state, event.effects)
   return {
     state: addLog(next, {
@@ -505,8 +582,9 @@ function rollMicroEvent(state: GameState): { state: GameState; message?: string 
 
 export function pickCrisis(state: GameState, multiplier = 1): CrisisDef | null {
   if (state.month < 3) return null
+  const rng = rngFor(state.seed ?? 0, 'crisis', state.month)
   const chance = (state.month >= 12 ? 0.42 : 0.32) * multiplier
-  if (Math.random() > chance) return null
+  if (rng() > chance) return null
   const eligible = CRISES.filter((crisis) => {
     if ((crisis.minMonth ?? 0) > state.month) return false
     if (crisis.requires && !crisis.requires(state)) return false
@@ -516,7 +594,7 @@ export function pickCrisis(state: GameState, multiplier = 1): CrisisDef | null {
   const unseen = eligible.filter((crisis) => !state.seenCrises.includes(crisis.id))
   const pool = unseen.length ? unseen : eligible
   const total = sum(pool.map((crisis) => crisis.weight))
-  let ticket = Math.random() * total
+  let ticket = rng() * total
   for (const crisis of pool) {
     ticket -= crisis.weight
     if (ticket <= 0) return crisis
@@ -532,6 +610,7 @@ function advancePipeline(state: GameState): {
   notes: string[]
 } {
   const industry = industryById(state.industry)
+  const rng = rngFor(state.seed ?? 0, 'pipeline', state.month)
   const kept: Deal[] = []
   const notes: string[] = []
   let cash = 0
@@ -541,12 +620,12 @@ function advancePipeline(state: GameState): {
   for (const deal of state.pipeline ?? []) {
     let next: Deal = { ...deal, monthsOpen: deal.monthsOpen + 1 }
     if (next.stage === 'lead') {
-      if (Math.random() < 0.58 + state.marketingSpend / 40_000) next.stage = 'qualified'
+      if (rng() < 0.58 + state.marketingSpend / 40_000) next.stage = 'qualified'
     } else if (next.stage === 'qualified') {
-      if (Math.random() < 0.55) next.stage = 'negotiation'
+      if (rng() < 0.55) next.stage = 'negotiation'
     } else {
       const chance = clamp(next.chance + (next.discount ? 0.16 : 0), 0.08, 0.92)
-      if (Math.random() < chance) {
+      if (rng() < chance) {
         const payout = Math.round(next.value * (next.discount ? 0.9 : 1))
         cash += payout
         customers += next.customers
@@ -555,7 +634,7 @@ function advancePipeline(state: GameState): {
         continue
       }
       next = { ...next, chance: clamp(next.chance - 0.06, 0.08, 0.92) }
-      if (next.monthsOpen > 3 && Math.random() < 0.35) {
+      if (next.monthsOpen > 3 && rng() < 0.35) {
         notes.push(`${next.company} went with someone else.`)
         continue
       }
@@ -565,7 +644,7 @@ function advancePipeline(state: GameState): {
   }
 
   const leadChance = 0.28 + state.marketingSpend / 22_000 + (rolesPower(state, 'sales') > 0 ? 0.18 : 0)
-  if (kept.length < 6 && Math.random() < leadChance) kept.push(makeDeal(state.industry, state.month))
+  if (kept.length < 6 && rng() < leadChance) kept.push(makeDeal(state.industry, state.month, rng))
   return { pipeline: kept, won, cash, customers, notes }
 }
 
@@ -589,6 +668,87 @@ function moveCompetitors(state: GameState): GameState['competitors'] {
     }
     return { ...competitor, share: Math.round(share * 1000) / 1000, lastMove }
   })
+}
+
+/**
+ * How customers pay. B2B industries sell on account, so a slice of each
+ * month's revenue is invoiced and only lands in cash when the invoice falls
+ * due. Consumer industries collect at the till.
+ */
+const ACCOUNT_NAMES = [
+  'Northline Distributors',
+  'Kite Retail Group',
+  'Meridian Logistics',
+  'Palm Foods Ltd',
+  'Harbour Wholesale',
+  'Cedar Street Stores',
+] as const
+
+export const CREDIT_TERMS: Record<IndustryId, { share: number; terms: 15 | 30 | 45 }> = {
+  saas: { share: 0.52, terms: 30 },
+  logistics: { share: 0.44, terms: 45 },
+  retail: { share: 0.16, terms: 15 },
+  fnb: { share: 0.08, terms: 15 },
+}
+
+/** An invoice falls due in the issuing month for 15-day terms, +1 month for 30, +2 for 45. */
+export function dueMonthFor(issuedMonth: number, terms: 15 | 30 | 45): number {
+  return issuedMonth + (terms === 15 ? 0 : terms === 45 ? 2 : 1)
+}
+
+export function openReceivables(invoices: Invoice[]): number {
+  return invoices.filter((invoice) => invoice.status !== 'paid').reduce((total, invoice) => total + invoice.amount, 0)
+}
+
+export interface SettlementResult {
+  invoices: Invoice[]
+  collected: number
+  overdue: number
+  writtenOff: number
+}
+
+/**
+ * Settle every invoice that falls due in `month`. Late payers are marked
+ * overdue and recover 80% at the next close; the rest is a bad debt.
+ */
+export function settleInvoices(
+  invoices: Invoice[],
+  month: number,
+  rng: () => number,
+  defaultRate: number,
+): SettlementResult {
+  const next: Invoice[] = []
+  let collected = 0
+  let overdue = 0
+  let writtenOff = 0
+
+  for (const invoice of invoices) {
+    if (invoice.status === 'paid') {
+      next.push(invoice)
+      continue
+    }
+    if (invoice.status === 'overdue') {
+      const recovered = Math.round(invoice.amount * 0.8)
+      collected += recovered
+      writtenOff += invoice.amount - recovered
+      overdue += 1
+      next.push({ ...invoice, status: 'paid', paidMonth: month, collected: recovered })
+      continue
+    }
+    if (invoice.dueMonth > month) {
+      next.push(invoice)
+      continue
+    }
+    if (rng() < defaultRate) {
+      overdue += 1
+      next.push({ ...invoice, status: 'overdue' })
+      continue
+    }
+    collected += invoice.amount
+    next.push({ ...invoice, status: 'paid', paidMonth: month, collected: invoice.amount })
+  }
+
+  return { invoices: next, collected, overdue, writtenOff }
 }
 
 export function advanceMonth(state: GameState): GameState {
@@ -667,7 +827,67 @@ export function advanceMonth(state: GameState): GameState {
     state.team.length * 180 +
     branchOverhead
   const costs = payrollBefore + overhead + interest + cogs + spoilage
-  let cash = state.cash + revenue - costs + pipeline.cash
+
+  // Revenue is accrued when the customer buys; cash arrives when the invoice
+  // falls due. This gap is what the receivables ledger tracks.
+  const credit = CREDIT_TERMS[industry.id]
+  const invoiced = Math.round(revenue * credit.share)
+  const cashSales = revenue - invoiced
+  const defaultRate = economy.phase === 'recession' ? 0.12 : 0.06
+  const settlement = settleInvoices(
+    state.invoices ?? [],
+    month,
+    rngFor(state.seed ?? 0, 'invoices', month),
+    defaultRate,
+  )
+  const newInvoices: Invoice[] = invoiced > 0
+    ? [{
+        id: `inv-${month + 1}`,
+        issuedMonth: month,
+        dueMonth: dueMonthFor(month, credit.terms),
+        amount: invoiced,
+        terms: credit.terms,
+        customer: pickWith(rngFor(state.seed ?? 0, 'account', month), ACCOUNT_NAMES),
+        status: 'open' as const,
+        paidMonth: null,
+        collected: 0,
+      }]
+    : []
+  const invoices = [...settlement.invoices, ...newInvoices].slice(-36)
+  const receivables = openReceivables(invoices)
+
+  // Stock is bought on supplier credit: the cost is expensed as it is used, but
+  // cash leaves when the bill falls due. `billed` is the payable for this month.
+  const inventoryValue = industry.inventory ? Math.max(0, Math.round(inventory * cogs)) : 0
+  const inventoryDelta = inventoryValue - (state.inventoryValue ?? 0)
+  const stockPurchases = Math.max(0, cogs + inventoryDelta)
+  const billed = Math.round(stockPurchases * BILL_SHARE)
+  const cashForStock = stockPurchases - billed
+
+  const cashBeforeBills =
+    state.cash + cashSales + settlement.collected - (payrollBefore + overhead + interest + cashForStock + spoilage) + pipeline.cash
+  const billSettlement = settleBills(state.bills ?? [], month, Math.max(0, cashBeforeBills))
+  const newBills: Bill[] = billed > 0
+    ? [{
+        id: `bill-${month + 1}`,
+        issuedMonth: month,
+        dueMonth: billDueMonth(month),
+        amount: billed,
+        vendor: pickWith(rngFor(state.seed ?? 0, 'vendor', month), VENDORS),
+        status: 'open' as const,
+        paidMonth: null,
+        paid: 0,
+        lateFee: 0,
+      }]
+    : []
+  const bills = [...billSettlement.bills, ...newBills].slice(-36)
+  const payables = openPayables(bills)
+  let cash = cashBeforeBills - billSettlement.paid
+
+  const depreciation = Math.round((state.fixedAssets ?? 0) * 0.02)
+  const fixedAssets = Math.max(0, (state.fixedAssets ?? 0) - depreciation)
+  const lateFees = billSettlement.lateFees
+  const badDebt = settlement.writtenOff
 
   const moraleTarget =
     74 -
@@ -711,8 +931,9 @@ export function advanceMonth(state: GameState): GameState {
       morale: clamp(member.morale + (morale - member.morale) * 0.25, 0, 100),
     }
   })
+  const attritionRng = rngFor(state.seed ?? 0, 'attrition', month)
   const leavers = trainedTeam.filter(
-    (member) => member.morale < 32 && Math.random() < 0.1 + (32 - member.morale) / 110,
+    (member) => member.morale < 32 && attritionRng() < 0.1 + (32 - member.morale) / 110,
   )
   const team = trainedTeam.filter((member) => !leavers.includes(member))
 
@@ -727,8 +948,14 @@ export function advanceMonth(state: GameState): GameState {
     economy,
     inventory,
     team,
-    candidates: makeCandidatePool(),
+    candidates: makeCandidatePool(rngFor(state.seed ?? 0, 'candidates', month)),
     pipeline: pipeline.pipeline,
+    invoices,
+    receivables,
+    bills,
+    payables,
+    inventoryValue,
+    fixedAssets,
     pipelineWon: (state.pipelineWon ?? 0) + pipeline.won,
     competitors: moveCompetitors({ ...state, quality, price: state.price }),
   }
@@ -756,10 +983,12 @@ export function advanceMonth(state: GameState): GameState {
     headline = 'You ran out of stock and turned demand away.'
   }
 
+  let emergencyBorrow = 0
   if (cash < 0) {
     const shortfall = Math.abs(cash)
     const needed = Math.ceil((shortfall + 6_000) / 1_000) * 1_000
     cash += needed
+    emergencyBorrow = needed
     next = {
       ...next,
       cash,
@@ -799,6 +1028,68 @@ export function advanceMonth(state: GameState): GameState {
   if (profitable && economy.phase === 'recession') next = unlock(next, 'weatherproof')
   if (promoted) next = unlock(next, 'promoted')
 
+  // --- statements ---------------------------------------------------------
+  // Built last so every cash movement in this close (including micro-events)
+  // is reflected, and the ledger ties out against the final cash balance.
+  const openingCash = state.history.length ? state.history[state.history.length - 1].cash : (state.startingCash ?? state.cash)
+  const flows = {
+    capex: next.flows?.capex ?? 0,
+    funding: next.flows?.funding ?? 0,
+    borrow: (next.flows?.borrow ?? 0) + emergencyBorrow,
+    repay: next.flows?.repay ?? 0,
+    expenses: next.flows?.expenses ?? 0,
+    otherIncome: (next.flows?.otherIncome ?? 0) + pipeline.cash,
+  }
+  const emergencyFee = Math.round(emergencyBorrow * 0.12)
+  const netProfit =
+    revenue - cogs - payrollBefore - overhead - depreciation - spoilage - badDebt - lateFees -
+    interest - emergencyFee + flows.otherIncome - flows.expenses
+  const paidInCapital = (state.paidInCapital ?? 0) + flows.funding
+  const retainedEarnings = (state.retainedEarnings ?? 0) + netProfit
+  const statement = buildStatements({
+    month,
+    openingCash,
+    closingCash: next.cash,
+    revenue,
+    cogs,
+    payroll: payrollBefore,
+    overhead,
+    marketing: state.marketingSpend ?? 0,
+    product: state.productSpend ?? 0,
+    training: trainingBudget,
+    depreciation,
+    interest: interest + emergencyFee,
+    interestPaid: interest,
+    spoilage,
+    badDebt,
+    lateFees,
+    otherExpenses: flows.expenses,
+    otherIncome: flows.otherIncome,
+    cashSales,
+    collections: settlement.collected,
+    stockPaid: cashForStock,
+    billsPaid: billSettlement.paid,
+    cashSpoilage: spoilage,
+    state: next,
+    inventoryValue,
+    fixedAssets,
+    receivables,
+    payables,
+    paidInCapital,
+    retainedEarnings,
+    capex: flows.capex,
+    funding: flows.funding,
+    borrow: flows.borrow,
+    repay: flows.repay,
+  })
+  next = {
+    ...next,
+    paidInCapital,
+    retainedEarnings,
+    statements: [...(state.statements ?? []), statement].slice(-24),
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+  }
+
   const insights = buildInsights(next)
 
   const snapshot = {
@@ -811,6 +1102,8 @@ export function advanceMonth(state: GameState): GameState {
     reputation: next.reputation,
     morale: next.morale,
     quality: next.quality,
+    collected: cashSales + settlement.collected + pipeline.cash,
+    receivables: next.receivables,
   }
   next = { ...next, history: [...next.history, snapshot] }
 
@@ -822,6 +1115,14 @@ export function advanceMonth(state: GameState): GameState {
     drivers.push(`Inventory cover: ${inventory.toFixed(1)} months at the current run rate.`)
   }
   if (spoilage > 0) drivers.push(`Spoilage wrote off ${money(spoilage)} of stock.`)
+  if (invoiced > 0) {
+    drivers.push(
+      `${money(invoiced)} of revenue was invoiced on ${credit.terms}-day terms; ${money(cashSales + settlement.collected)} reached the bank account and ${money(receivables)} is still receivable.`,
+    )
+  }
+  if (settlement.overdue > 0) {
+    drivers.push(`${number(settlement.overdue)} invoice${settlement.overdue === 1 ? '' : 's'} missed the due date — late payers recover about 80% next month.`)
+  }
   if (pipeline.notes.length) drivers.push(...pipeline.notes.slice(0, 2))
   if (branchDemand > 0) drivers.push(`Branches added ${number(branchDemand)} demand points.`)
   if (trainingBudget > 0) drivers.push(`Training spend of ${money(trainingBudget)} lifted team capability.`)
@@ -892,6 +1193,17 @@ export function advanceMonth(state: GameState): GameState {
     stockout,
     dealsWon: pipeline.won,
     branchDemand,
+    invoiced,
+    collected: cashSales + settlement.collected,
+    receivables: next.receivables,
+    overdue: invoices.filter((invoice) => invoice.status === 'overdue').length,
+    billed,
+    billsPaid: billSettlement.paid,
+    payables,
+    lateFees,
+    depreciation,
+    badDebt,
+    netProfit: statement.income.netProfit,
   }
 
   next = { ...next, lastReport: report }
@@ -899,13 +1211,20 @@ export function advanceMonth(state: GameState): GameState {
   return next
 }
 
+/**
+ * Advance one day. The day counter is always within the month (1..30) so it
+ * matches what the server accepts, and a pending crisis blocks the clock
+ * instead of silently rolling the month over.
+ */
 export function advanceDay(state: GameState): GameState {
-  const nextDay = (state.day ?? state.month * DAYS_PER_MONTH + 1) + 1
-  if (nextDay % DAYS_PER_MONTH === 0) {
-    const monthState = advanceMonth({ ...state, day: nextDay })
-    return { ...monthState, day: nextDay }
+  if (state.status !== 'active' || state.pendingCrisis) return state
+  const day = Math.min(Math.max(1, Math.round(state.day ?? 1)), DAYS_PER_MONTH)
+  if (day >= DAYS_PER_MONTH) {
+    const closed = advanceMonth({ ...state, day })
+    if (closed === state) return state
+    return { ...closed, day: 1 }
   }
-  return { ...state, day: nextDay }
+  return { ...state, day: day + 1 }
 }
 
 function unlock(state: GameState, achievement: string): GameState {
@@ -965,6 +1284,7 @@ export function hireCandidate(state: GameState, candidateId: string): GameState 
   let next: GameState = {
     ...state,
     cash: state.cash - candidate.signingBonus,
+    flows: recordFlow(state, 'expenses', candidate.signingBonus),
     team: [...state.team, makeEmployee(candidate, state.month)],
     candidates: state.candidates.filter((item) => item.id !== candidateId),
     morale: clamp(state.morale + 1, 0, 100),
@@ -986,6 +1306,7 @@ export function fireEmployee(state: GameState, employeeId: string): GameState {
   let next: GameState = {
     ...state,
     cash: state.cash - member.salary,
+    flows: recordFlow(state, 'expenses', member.salary),
     team: state.team.filter((item) => item.id !== employeeId),
     morale: clamp(state.morale - 6, 0, 100),
     reputation: clamp(state.reputation - 1, 0, 100),
@@ -1004,7 +1325,8 @@ export function refreshCandidates(state: GameState): GameState {
   return {
     ...state,
     cash: state.cash - 500,
-    candidates: makeCandidatePool(),
+    flows: recordFlow(state, 'expenses', 500),
+    candidates: makeCandidatePool(rngFor(state.seed ?? 0, 'pool-refresh', state.month, Math.round(state.cash))),
   }
 }
 
@@ -1013,10 +1335,11 @@ export function offerRound(state: GameState): GameState {
   const metrics = getMetrics(state)
   const valuation = computeValuation(state)
   const tractionBonus = clamp(metrics.mrr / 800, 0, 1.6)
-  const funds = [...FUNDS].sort(() => Math.random() - 0.5).slice(0, 2)
+  const rng = rngFor(state.seed ?? 0, 'offers', state.month)
+  const funds = shuffledWith(rng, FUNDS).slice(0, 2)
   const offers: InvestorOffer[] = funds.map((fund, index) => {
-    const preMoney = Math.round((valuation * rand(0.85, 1.25) * (1 + tractionBonus * 0.25)) / 50_000) * 50_000
-    const target = index === 0 ? rand(0.1, 0.18) : rand(0.07, 0.14)
+    const preMoney = Math.round((valuation * randWith(rng, 0.85, 1.25) * (1 + tractionBonus * 0.25)) / 50_000) * 50_000
+    const target = index === 0 ? randWith(rng, 0.1, 0.18) : randWith(rng, 0.07, 0.14)
     const amount = Math.max(125_000, Math.round((preMoney * target) / 25_000) * 25_000)
     const equity = clamp(amount / (preMoney + amount), 0.03, 0.35)
     const terms = [
@@ -1045,6 +1368,7 @@ export function acceptOffer(state: GameState, offerId: string): GameState {
   const next: GameState = {
     ...state,
     cash: state.cash + offer.amount,
+    flows: recordFlow(state, 'funding', offer.amount),
     founderEquity: Math.round(state.founderEquity * (1 - offer.equity) * 10) / 10,
     valuation: offer.valuation + offer.amount,
     totalRaised: state.totalRaised + offer.amount,
@@ -1074,6 +1398,7 @@ export function takeLoan(state: GameState, amount: number): GameState {
     ...state,
     cash: state.cash + loan,
     debt: state.debt + loan,
+    flows: recordFlow(state, 'borrow', loan),
   }
   next = { ...next, valuation: computeValuation(next) }
   return addLog(next, {
@@ -1092,6 +1417,7 @@ export function repayDebt(state: GameState, amount: number): GameState {
     ...state,
     cash: state.cash - repayment,
     debt: state.debt - repayment,
+    flows: recordFlow(state, 'repay', repayment),
   }
   next = { ...next, valuation: computeValuation(next) }
   return addLog(next, {
@@ -1159,6 +1485,7 @@ export function pushDeal(state: GameState, dealId: string): GameState {
     {
       ...state,
       cash: state.cash - 1_200,
+      flows: recordFlow(state, 'expenses', 1_200),
       pipeline: state.pipeline.map((item) =>
         item.id === dealId ? { ...item, chance: clamp(item.chance + 0.16, 0.08, 0.92), pushed: true } : item,
       ),
@@ -1181,6 +1508,8 @@ export function openBranch(state: GameState, branchId: string): GameState {
   const next: GameState = {
     ...state,
     cash: state.cash - branch.launchCost,
+    fixedAssets: (state.fixedAssets ?? 0) + branch.launchCost,
+    flows: recordFlow(state, 'capex', branch.launchCost),
     branches: state.branches.map((item) =>
       item.id === branchId ? { ...item, openedMonth: state.month } : item,
     ),
@@ -1278,8 +1607,7 @@ export function getGrade(score: number) {
 }
 
 export function performanceScore(state: GameState) {
-  const raw = computeScore(state)
-  return Math.round(clamp(raw / 70, 0, 100))
+  return Math.round(clamp(computeScore(state), 0, 100))
 }
 
 export const ALL_INDUSTRIES = INDUSTRIES
@@ -1299,6 +1627,21 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
   return {
     ...game,
     version: SAVE_VERSION,
+    seed: game.seed ?? hashSeed(game.company ?? 'businesslife', game.month ?? 0),
+    journal: game.journal ?? [],
+    journalComplete: game.journalComplete ?? ((game.journal?.length ?? 0) === 0 && (game.month ?? 0) === 0),
+    startingCash: game.startingCash ?? game.cash ?? 0,
+    invoices: game.invoices ?? [],
+    receivables: game.receivables ?? 0,
+    bills: game.bills ?? [],
+    payables: game.payables ?? 0,
+    inventoryValue: game.inventoryValue ?? 0,
+    fixedAssets: game.fixedAssets ?? 0,
+    paidInCapital: game.paidInCapital ?? game.cash ?? 0,
+    retainedEarnings: game.retainedEarnings ?? 0,
+    flows: game.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    statements: game.statements ?? [],
+    authority: game.authority ?? undefined,
     beginner: migratedProgress,
     day: game.day ?? ((game.month ?? 0) * DAYS_PER_MONTH + 1),
     firstName: game.firstName ?? game.founder?.split(' ')[0] ?? 'Founder',

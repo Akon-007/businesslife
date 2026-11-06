@@ -150,8 +150,8 @@ export const STRATEGIES: StrategyDef[] = [
     tradeoff: 'Slower early growth',
     starting: { quality: 8, reputation: 2, customers: 0, cash: 0 },
     powers: { quality: 6, sales: 1, marketing: 3, ops: 3 },
-    accent: '#0b8550',
-    soft: '#d2f6e1',
+    accent: '#0f9c72',
+    soft: '#d6f7ec',
   },
   {
     id: 'sales',
@@ -161,8 +161,8 @@ export const STRATEGIES: StrategyDef[] = [
     tradeoff: 'Thinner margins',
     starting: { quality: -2, reputation: 0, customers: 10, cash: -5_000 },
     powers: { quality: 2, sales: 7, marketing: 4, ops: 2 },
-    accent: '#2f80c7',
-    soft: '#cbe8f7',
+    accent: '#176bff',
+    soft: '#dbe9ff',
   },
   {
     id: 'community',
@@ -172,8 +172,8 @@ export const STRATEGIES: StrategyDef[] = [
     tradeoff: 'Volatile demand',
     starting: { quality: 0, reputation: 8, customers: 5, cash: 0 },
     powers: { quality: 3, sales: 4, marketing: 6, ops: 3 },
-    accent: '#7c6cf6',
-    soft: '#e8e4ff',
+    accent: '#5a4be0',
+    soft: '#e7e4fb',
   },
 ]
 
@@ -198,8 +198,8 @@ export const FOUNDER_BACKGROUNDS: FounderBackgroundDef[] = [
     detail: 'Service stays tight, churn stays low, the team trusts you.',
     starting: { cash: 0, customers: 0, quality: 0, reputation: 0, morale: 6 },
     powers: { quality: 0, sales: 0, marketing: 0, ops: 2.5 },
-    accent: '#0b8550',
-    soft: '#d2f6e1',
+    accent: '#0f9c72',
+    soft: '#d6f7ec',
   },
   {
     id: 'builder',
@@ -208,8 +208,8 @@ export const FOUNDER_BACKGROUNDS: FounderBackgroundDef[] = [
     detail: 'A stronger product from day one, at the cost of polish elsewhere.',
     starting: { cash: 0, customers: 0, quality: 7, reputation: 0, morale: 0 },
     powers: { quality: 2, sales: 0, marketing: 0, ops: 0 },
-    accent: '#2f80c7',
-    soft: '#cbe8f7',
+    accent: '#176bff',
+    soft: '#dbe9ff',
   },
   {
     id: 'seller',
@@ -218,7 +218,7 @@ export const FOUNDER_BACKGROUNDS: FounderBackgroundDef[] = [
     detail: 'More demand early and a sharper close on every deal.',
     starting: { cash: 0, customers: 4, quality: 0, reputation: 2, morale: 0 },
     powers: { quality: 0, sales: 2, marketing: 1, ops: 0 },
-    accent: '#c4811a',
+    accent: '#8a5f12',
     soft: '#fbe9c9',
   },
   {
@@ -228,8 +228,8 @@ export const FOUNDER_BACKGROUNDS: FounderBackgroundDef[] = [
     detail: 'Better marketing efficiency and a little more capital to start.',
     starting: { cash: 15_000, customers: 0, quality: 0, reputation: 0, morale: 0 },
     powers: { quality: 0, sales: 0, marketing: 2, ops: 1 },
-    accent: '#7c6cf6',
-    soft: '#e8e4ff',
+    accent: '#5a4be0',
+    soft: '#e7e4fb',
   },
 ]
 
@@ -318,8 +318,8 @@ export const DIFFICULTIES: DifficultyDef[] = [
     blurb: 'More starting cash, softer crises. Learn how the machine behaves.',
     cashMult: 1.2,
     crisisMult: 0.75,
-    accent: '#0b8550',
-    soft: '#d2f6e1',
+    accent: '#0f9c72',
+    soft: '#d6f7ec',
   },
   {
     id: 'standard',
@@ -336,7 +336,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     blurb: 'Thin cash, meaner shocks. For people who already know the ropes.',
     cashMult: 0.85,
     crisisMult: 1.3,
-    accent: '#e05a3f',
+    accent: '#e5484d',
     soft: '#fbe2dc',
   },
 ]
@@ -392,7 +392,7 @@ export function makeCompetitors(industry: IndustryId): Competitor[] {
   }))
 }
 
-const unicornId = (index: number) => `comp-${index}-${Math.random().toString(36).slice(2, 6)}`
+const unicornId = (index: number) => `comp-${index}`
 
 export const BRANCH_OPTIONS: Branch[] = [
   {
@@ -501,10 +501,10 @@ const QUIRKS = [
   'Will tell you what you need to hear.',
 ]
 
-export const randomCandidateName = () => ({
-  name: `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`,
-  background: BACKGROUNDS[Math.floor(Math.random() * BACKGROUNDS.length)],
-  quirk: QUIRKS[Math.floor(Math.random() * QUIRKS.length)],
+export const randomCandidateName = (rng: () => number = Math.random) => ({
+  name: `${FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]}`,
+  background: BACKGROUNDS[Math.floor(rng() * BACKGROUNDS.length)],
+  quirk: QUIRKS[Math.floor(rng() * QUIRKS.length)],
 })
 
 export const CRISES: CrisisDef[] = [

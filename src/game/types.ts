@@ -236,6 +236,122 @@ export interface LogEntry {
   kind: 'finance' | 'team' | 'market' | 'funding' | 'crisis' | 'milestone' | 'world'
 }
 
+/**
+ * Customer invoices. Revenue is recognised when the sale happens; cash only
+ * arrives when the invoice is due and paid. That gap is the receivable.
+ */
+export interface Invoice {
+  id: string
+  /** Game month the sale happened in (0-based, matches GameState.month). */
+  issuedMonth: number
+  /** Game month the money is expected. */
+  dueMonth: number
+  amount: number
+  terms: 0 | 15 | 30 | 45
+  customer: string
+  status: 'open' | 'overdue' | 'paid'
+  paidMonth: number | null
+  /** Cash actually collected — late payers can settle short. */
+  collected: number
+}
+
+/**
+ * Supplier bills. Stock is often bought on account: the cost is expensed when
+ * the goods are used, but cash leaves when the bill falls due.
+ */
+export interface Bill {
+  id: string
+  issuedMonth: number
+  dueMonth: number
+  amount: number
+  vendor: string
+  status: 'open' | 'overdue' | 'paid'
+  paidMonth: number | null
+  paid: number
+  /** Late-payment fee charged when the bill missed its due date. */
+  lateFee: number
+}
+
+/** Money that moved between closes: capex, funding, borrowing, repayments. */
+export interface FlowBucket {
+  capex: number
+  funding: number
+  borrow: number
+  repay: number
+  /** One-off cash costs between closes (signing bonus, crisis spend, …). */
+  expenses: number
+  /** One-off cash income between closes (crisis upside, asset sales, …). */
+  otherIncome: number
+}
+
+export interface IncomeStatement {
+  revenue: number
+  cogs: number
+  grossProfit: number
+  payroll: number
+  overhead: number
+  marketing: number
+  product: number
+  training: number
+  depreciation: number
+  interest: number
+  spoilage: number
+  badDebt: number
+  lateFees: number
+  otherExpenses: number
+  otherIncome: number
+  operatingProfit: number
+  netProfit: number
+}
+
+export interface BalanceSheet {
+  cash: number
+  receivables: number
+  inventory: number
+  fixedAssets: number
+  totalAssets: number
+  payables: number
+  debt: number
+  totalLiabilities: number
+  paidInCapital: number
+  retainedEarnings: number
+  totalEquity: number
+  liabilitiesAndEquity: number
+  /** Assets − (liabilities + equity). Should be ~0; shown so the learner can check. */
+  imbalance: number
+}
+
+export interface CashFlowStatement {
+  openingCash: number
+  cashSales: number
+  collections: number
+  stockPaid: number
+  billsPaid: number
+  payroll: number
+  overhead: number
+  interest: number
+  spoilage: number
+  lateFees: number
+  otherExpenses: number
+  otherIncome: number
+  operating: number
+  capex: number
+  investing: number
+  funding: number
+  borrow: number
+  repay: number
+  financing: number
+  netChange: number
+  closingCash: number
+}
+
+export interface Statements {
+  month: number
+  income: IncomeStatement
+  balance: BalanceSheet
+  cashFlow: CashFlowStatement
+}
+
 export interface Snapshot {
   month: number
   cash: number
@@ -246,10 +362,67 @@ export interface Snapshot {
   reputation: number
   morale: number
   quality: number
+  /** Cash collected from customers this month (revenue is accrued). */
+  collected?: number
+  /** Invoiced but not yet collected at month close. */
+  receivables?: number
+}
+
+export interface ServerAuthority {
+  score: number
+  month: number
+  cash: number
+  commits: number
+  updatedAt: string
+  integrity: 'verified' | 'flagged' | 'unknown'
+  readOnly: boolean
+}
+
+export type GameOpName =
+  | 'advanceDay'
+  | 'resolveCrisis'
+  | 'hireCandidate'
+  | 'fireEmployee'
+  | 'refreshCandidates'
+  | 'offerRound'
+  | 'acceptOffer'
+  | 'declineOffers'
+  | 'takeLoan'
+  | 'repayDebt'
+  | 'setPrice'
+  | 'setMarketing'
+  | 'setProduct'
+  | 'setTraining'
+  | 'selectSupplier'
+  | 'setRestock'
+  | 'toggleDealDiscount'
+  | 'pushDeal'
+  | 'openBranch'
+  | 'missionEvidence'
+
+/**
+ * One recorded decision. The journal is append-only: replaying the seed plus
+ * this list reproduces the run exactly, which is what the server checks.
+ */
+export interface GameOp {
+  op: GameOpName
+  args?: Record<string, unknown>
 }
 
 export interface GameState {
   backendCompanyId?: string
+  authority?: ServerAuthority
+  /** Seed for the deterministic engine. Same seed + same decisions = same run. */
+  seed: number
+  /** Append-only record of the decisions that produced this state. */
+  journal: GameOp[]
+  /**
+   * False for runs that were already in progress before the journal existed:
+   * their journal starts mid-run, so the server cannot replay them from zero.
+   */
+  journalComplete?: boolean
+  /** Cash the run actually began with (scenario starting capital or derived). */
+  startingCash: number
   version: number
   status: GameStatus
   endedReason?: string
@@ -285,6 +458,26 @@ export interface GameState {
   totalRaised: number
   emergencyLoans: number
   pendingCrisis: CrisisState | null
+  /** Outstanding customer invoices, oldest first. */
+  invoices: Invoice[]
+  /** Total ₦ invoiced and not yet collected. */
+  receivables: number
+  /** Outstanding supplier bills, oldest first. */
+  bills: Bill[]
+  /** Total ₦ owed to suppliers. */
+  payables: number
+  /** Inventory at cost. */
+  inventoryValue: number
+  /** Accumulated branch/expansion capex, net of depreciation. */
+  fixedAssets: number
+  /** Capital the founders and investors have put in. */
+  paidInCapital: number
+  /** Lifetime profit kept in the business. */
+  retainedEarnings: number
+  /** Money moved between closes, for the cash-flow statement. */
+  flows: FlowBucket
+  /** Latest statements, one per closed month (newest last, capped). */
+  statements: Statements[]
   seenCrises: string[]
   log: LogEntry[]
   history: Snapshot[]
@@ -329,6 +522,19 @@ export interface MonthReport {
   stockout: boolean
   dealsWon: number
   branchDemand: number
+  /** Accrual revenue vs cash actually banked this month. */
+  invoiced: number
+  collected: number
+  receivables: number
+  overdue: number
+  /** Payables side of the ledger. */
+  billed: number
+  billsPaid: number
+  payables: number
+  lateFees: number
+  depreciation: number
+  badDebt: number
+  netProfit: number
 }
 
 export interface GameMetrics {

@@ -1,10 +1,13 @@
 export type Id = string
 
+export type PlayerRole = 'learner' | 'instructor' | 'admin'
+
 export interface Player {
   id: Id
   name: string
   createdAt: string
   wallet: number
+  role: PlayerRole
   progression: { xp: number; reputation: number }
   firstName?: string
   lastName?: string
@@ -189,7 +192,24 @@ export interface Company {
     currentLevel: number
     completedMissions: string[]
   }
-  simulation: { day: number; lastAdvancedAt: string; processedSchedules: string[] }
+  simulation: {
+    day: number
+    lastAdvancedAt: string
+    processedSchedules: string[]
+    scenarioSeed?: number
+    runSeed?: number
+    /** Outcome of the last server-side replay of this company's decision journal. */
+    replay?: {
+      status: 'match' | 'mismatch' | 'error' | 'none'
+      checkedAt: string
+      ops: number
+      months: number
+      diffs: number
+      error?: string
+    }
+    /** Latest journal + profile, kept so instructors can re-run the replay on demand. */
+    replayInput?: { profile: Record<string, unknown>; journal: unknown[] }
+  }
   notifications: Array<Record<string, unknown>>
   popups: Array<Record<string, unknown>>
   socialPosts: SocialPost[]
@@ -198,6 +218,10 @@ export interface Company {
   conversations: Conversation[]
   messages: Message[]
   reputationProfile: ReputationProfile
+  authority?: AuthorityState
+  authorityViolations?: AuthorityViolation[]
+  auditChain: AuditRecord[]
+  aiTraces: AiTrace[]
 }
 
 export interface CityState {
@@ -213,6 +237,74 @@ export interface ClassRoom {
   name: string
   studentIds: Id[]
   scenario: Record<string, unknown> | null
+  createdAt: string
+  records?: ClassroomRecord[]
+}
+
+export interface ClassroomRecord {
+  studentId: Id
+  grade?: number
+  feedback?: string
+  /** 1–4 per criterion, set when the instructor graded with the rubric. */
+  rubric?: Record<string, number>
+  /** Written justification. Required whenever a rubric grade is recorded. */
+  rationale?: string
+  /** Engine score at the moment of grading, so a delta can be reviewed later. */
+  engineScoreAtGrade?: number
+  gradedBy?: Id
+  gradedAt?: string
+  resetAt?: string
+  assignedAt?: string
+}
+
+export interface AuthorityViolation {
+  code: string
+  field: string
+  message: string
+  clientValue?: number | string | null
+  canonicalValue?: number | string | null
+  at: string
+}
+
+export interface AuthorityState {
+  version: number
+  score: number
+  month: number
+  day: number
+  cashKobo: number
+  customers: number
+  revenueKobo: number
+  expensesKobo: number
+  valuationKobo: number
+  priceNaira?: number
+  quality?: number
+  reputation?: number
+  morale?: number
+  teamSkill?: number
+  status: string
+  commits: number
+  updatedAt: string
+  lastViolationAt?: string
+}
+
+export interface AuditRecord {
+  seq: number
+  at: string
+  type: string
+  actor: string
+  payload: Record<string, unknown>
+  prevHash: string
+  hash: string
+}
+
+export interface AiTrace {
+  id: Id
+  character: string
+  provider: string
+  blocked: boolean
+  reason?: string
+  latencyMs: number
+  promptHash: string
   createdAt: string
 }
 

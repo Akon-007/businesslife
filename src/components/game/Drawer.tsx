@@ -20,6 +20,7 @@ import {
   MapPin,
   Megaphone,
   Palette,
+  Receipt,
   RefreshCcw,
   ShieldAlert,
   Store,
@@ -33,6 +34,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useGame } from '../../game/store'
+import { askAdvisor, type AiReply } from '../../lib/api'
 import {
   buildInsights,
   estimateChurn,
@@ -56,6 +58,8 @@ import { IN_GAME_APPS } from '../../game/apps'
 import { money, monthLabel, number, percent } from '../../lib/format'
 import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
+import { FinancePanel } from './FinancePanel'
+import { useDialogFocus } from '../ui/useDialogFocus'
 
 export type PanelId =
   | 'company'
@@ -70,6 +74,7 @@ export type PanelId =
   | 'expansion'
   | 'journey'
   | 'apps'
+  | 'finance'
 
 export const PANEL_META: Record<PanelId, { title: string; kicker: string; description: string; icon: LucideIcon; color: string }> = {
   company: {
@@ -77,84 +82,91 @@ export const PANEL_META: Record<PanelId, { title: string; kicker: string; descri
     kicker: 'Company',
     description: 'The whole story: cash, valuation, plan and every decision you have made.',
     icon: Building2,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   market: {
     title: 'Market Plaza',
     kicker: 'Customers',
     description: 'Set price and budgets, then watch the demand and churn forecast move.',
     icon: Store,
-    color: '#e05a3f',
+    color: '#e5484d',
   },
   talent: {
     title: 'Talent Hub',
     kicker: 'Team',
     description: 'Every hire buys capacity and costs runway. Choose carefully.',
     icon: Users,
-    color: '#7c6cf6',
+    color: '#5a4be0',
   },
   bank: {
     title: 'Meridian Bank',
     kicker: 'Credit',
     description: 'Borrow against the business, or repay debt and buy back your freedom.',
     icon: Landmark,
-    color: '#b07a1e',
+    color: '#f5a623',
   },
   investors: {
     title: 'Investor Row',
     kicker: 'Funding',
     description: 'Open a round, read the term sheets and decide how much equity to sell.',
     icon: Handshake,
-    color: '#2f80c7',
+    color: '#176bff',
   },
   crisis: {
     title: 'Crisis Ops',
     kicker: 'Risk',
     description: 'The crises you survived, and the ones still waiting for an answer.',
     icon: ShieldAlert,
-    color: '#e05a3f',
+    color: '#e5484d',
   },
   nova: {
     title: 'Nova',
-    kicker: 'AI advisor',
+    kicker: 'Advisor',
     description: 'A coaching layer over your numbers. Plain English, no financial advice.',
     icon: Compass,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   suppliers: {
     title: 'Supply Depot',
     kicker: 'Operations',
     description: 'Choose who you buy from, how much cover to hold, and what a stockout costs.',
     icon: Boxes,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
   sales: {
     title: 'Sales Office',
     kicker: 'Pipeline',
     description: 'Leads become qualified, then negotiated. Push the deals worth closing.',
     icon: Target,
-    color: '#2f80c7',
+    color: '#176bff',
   },
   expansion: {
     title: 'Expansion District',
     kicker: 'Growth',
     description: 'Open a second market. Capex and overhead today, demand tomorrow.',
     icon: MapPin,
-    color: '#c4811a',
+    color: '#f5a623',
   },
   journey: {
     title: 'Beginner journey',
     kicker: 'Stage 01 · 15 levels',
     description: 'A playable path from business idea to first sales and break-even.',
     icon: ListChecks,
-    color: '#0b8550',
+    color: '#0f9c72',
+  },
+  finance: {
+    title: 'Finance centre',
+    kicker: 'Ledger',
+    description: 'Profit & loss, balance sheet, cash flow, invoices, bills and a what-if check.',
+    icon: Receipt,
+    color: '#176bff',
   },
   apps: {
     title: 'Phone apps',
     kicker: 'Meridian City ecosystem',
     description: 'The services, businesses and networks that make the city feel alive.',
     icon: Smartphone,
-    color: '#0b8550',
+    color: '#0f9c72',
   },
 }
 
@@ -178,6 +190,7 @@ export function Drawer({
   const meta = panel ? PANEL_META[panel] : null
   const game = useGame((state) => state.game)
   const ended = !!game && game.status !== 'active'
+  const dialogRef = useDialogFocus<HTMLElement>(!!panel, onClose)
 
   return (
     <AnimatePresence>
@@ -194,9 +207,11 @@ export function Drawer({
             className="absolute inset-0 bg-ink-950/45 backdrop-blur-[3px]"
           />
           <motion.aside
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={meta.title}
+            tabIndex={-1}
             initial={{ x: 56, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 48, opacity: 0 }}
@@ -246,6 +261,7 @@ export function Drawer({
               {panel === 'expansion' && <ExpansionPanel onNavigate={onNavigate} />}
               {panel === 'journey' && <JourneyPanel />}
               {panel === 'apps' && <AppsPanel onNavigate={onNavigate} />}
+              {panel === 'finance' && <FinancePanel />}
             </div>
           </motion.aside>
         </div>
@@ -302,7 +318,7 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
           ))}
         </div>
         <div className="mt-3 h-10">
-          <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#c9f269" height={40} />
+          <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#35e0a1" height={40} />
         </div>
         <div className="mt-1 flex items-center justify-between text-[9.5px] text-white/40">
           <span>Cash since day 1</span>
@@ -584,7 +600,7 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
           onClick={() => onNavigate('expansion')}
           className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2.5 text-left transition hover:border-line-strong"
         >
-          <MapPin className="size-4 shrink-0 text-[#9a6b12]" />
+          <MapPin className="size-4 shrink-0 text-gold-ink" />
           <span className="min-w-0">
             <span className="block text-[11px] font-bold text-ink">Expansion</span>
             <span className="block text-[9.5px] text-ink-400">{game.branches.filter((branch) => branch.openedMonth !== null).length} markets open</span>
@@ -615,7 +631,7 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
   )
 }
 
-const AVATAR_COLORS = ['#0b8550', '#7c6cf6', '#2f80c7', '#b07a1e', '#e05a3f']
+const AVATAR_COLORS = ['#0f9c72', '#5a4be0', '#176bff', '#f5a623', '#e5484d']
 
 function initials(name: string) {
   return name
@@ -749,7 +765,7 @@ function TalentPanel() {
       </PanelSection>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <Coins className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+        <Coins className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           Payroll is your largest fixed cost. A ₦6,000 salary is <b>{money(72_000)}</b> a year — against your current
           burn, that is real runway.
@@ -920,6 +936,60 @@ function BankPanel() {
             </button>
           </div>
         )}
+      </PanelSection>
+
+      <PanelSection
+        title="Receivables"
+        hint="Revenue is booked when a customer buys. Cash arrives when the invoice falls due."
+      >
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Owed to you" value={money(game.receivables ?? 0, { compact: true })} />
+          <Stat
+            label="Overdue"
+            value={String((game.invoices ?? []).filter((invoice) => invoice.status === 'overdue').length)}
+            tone={(game.invoices ?? []).some((invoice) => invoice.status === 'overdue') ? 'warn' : 'good'}
+          />
+          <Stat
+            label="Open invoices"
+            value={String((game.invoices ?? []).filter((invoice) => invoice.status !== 'paid').length)}
+          />
+        </div>
+        <div className="mt-2 space-y-1.5">
+          {(game.invoices ?? [])
+            .filter((invoice) => invoice.status !== 'paid')
+            .slice(-4)
+            .reverse()
+            .map((invoice) => (
+              <div key={invoice.id} className="flex items-center justify-between rounded-lg bg-paper-3/60 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold text-ink">{invoice.customer}</p>
+                  <p className="text-[9.5px] text-ink-400">
+                    net {invoice.terms} · due {monthLabel(invoice.dueMonth)} · issued {monthLabel(invoice.issuedMonth)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-bold tabular-nums text-ink">{money(invoice.amount, { compact: true })}</p>
+                  <p
+                    className={clsx(
+                      'text-[9px] font-bold uppercase tracking-[0.06em]',
+                      invoice.status === 'overdue' ? 'text-coral' : 'text-ink-400',
+                    )}
+                  >
+                    {invoice.status === 'overdue' ? 'overdue' : 'open'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          {(game.invoices ?? []).filter((invoice) => invoice.status !== 'paid').length === 0 ? (
+            <p className="rounded-xl bg-brand-50 px-3 py-3 text-center text-[10.5px] font-semibold text-brand-700">
+              Nothing outstanding. Every invoice has been collected.
+            </p>
+          ) : null}
+        </div>
+        <p className="mt-2 text-[9.5px] leading-relaxed text-ink-400">
+          Late payers settle about 80% of the invoice the following month; the remainder is a bad debt. Watch this
+          balance before you take on new costs.
+        </p>
       </PanelSection>
 
       <p className="px-1 text-[10px] leading-relaxed text-ink-400">
@@ -1242,7 +1312,7 @@ function SupplierPanel() {
 const STAGE_META: Record<string, { label: string; tone: string }> = {
   lead: { label: 'Lead', tone: 'bg-paper-3 text-ink-500' },
   qualified: { label: 'Qualified', tone: 'bg-violet-soft text-violet' },
-  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-[#9a6b12]' },
+  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-gold-ink' },
 }
 
 function SalesPanel() {
@@ -1300,7 +1370,7 @@ function SalesPanel() {
                         onClick={() => toggleDiscount(deal.id)}
                         className={clsx(
                           'rounded-full px-2 py-1 text-[9.5px] font-bold transition',
-                          deal.discount ? 'bg-gold-soft text-[#9a6b12]' : 'bg-paper-3 text-ink-500 hover:text-ink',
+                          deal.discount ? 'bg-gold-soft text-gold-ink' : 'bg-paper-3 text-ink-500 hover:text-ink',
                         )}
                       >
                         {deal.discount ? '10% discount on' : 'Offer 10% discount'}
@@ -1423,7 +1493,7 @@ function ExpansionPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }
       </div>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <MapPin className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+        <MapPin className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           A second market only works when the first one no longer needs your attention. {industry.name} branches add
           demand every month and overhead whether customers arrive or not.
@@ -1546,6 +1616,64 @@ function JourneyPanel() {
   )
 }
 
+function AskNova({ game }: { game: ReturnType<typeof useCurrentGame> }) {
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState<AiReply | null>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+
+  const send = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!game.backendCompanyId) {
+      setError('Connect to the server before asking — Nova reads authoritative figures.')
+      return
+    }
+    setPending(true)
+    setError('')
+    try {
+      setAnswer(await askAdvisor(game.backendCompanyId, question.trim()))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Nova is unavailable right now.')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <PanelSection title="Ask Nova" hint="Runs through the AI gateway. No tool can change your numbers.">
+      <form onSubmit={send} className="flex gap-2">
+        <input
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          maxLength={280}
+          placeholder="Can I afford another hire?"
+          aria-label="Ask Nova a question"
+          className="h-10 w-full rounded-xl border border-line bg-white px-3 text-[11.5px] text-ink outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="h-10 shrink-0 rounded-xl bg-ink px-3 text-[11px] font-bold text-lime transition hover:bg-ink-800 disabled:opacity-50"
+        >
+          {pending ? 'Thinking' : 'Ask'}
+        </button>
+      </form>
+      {error ? <p className="mt-2 rounded-xl bg-coral-soft px-3 py-2 text-[10.5px] font-semibold text-coral">{error}</p> : null}
+      {answer ? (
+        <div className={clsx('mt-2 rounded-2xl p-3 ring-1', answer.blocked ? 'bg-gold-soft ring-gold/40' : 'bg-brand-50 ring-brand-100')}>
+          <p className="text-[11px] leading-relaxed text-ink-700">{answer.reply}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[8.5px] font-bold uppercase tracking-[0.08em]">
+            <span className="rounded-full bg-white/80 px-2 py-0.5 text-ink-500">{answer.provider}</span>
+            {answer.blocked ? <span className="rounded-full bg-coral/15 px-2 py-0.5 text-coral">guardrail · {answer.reason}</span> : null}
+            <span className="rounded-full bg-white/60 px-2 py-0.5 text-ink-400">{answer.grounded.length} grounded figures</span>
+            <span className="rounded-full bg-white/60 px-2 py-0.5 text-ink-400">{answer.rateRemaining} left this window</span>
+          </div>
+        </div>
+      ) : null}
+    </PanelSection>
+  )
+}
+
 function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
   const game = useCurrentGame()
   const industry = industryById(game.industry)
@@ -1565,8 +1693,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
             <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-ink bg-brand-500" />
           </span>
           <div>
-            <p className="font-display text-[16px] font-semibold">Nova · AI chief of staff</p>
-            <p className="text-[10px] text-white/45">Reads your numbers, not your pitch</p>
+            <p className="font-display text-[16px] font-semibold">Nova · Chief of staff</p>
+            <p className="text-[10px] text-white/45">Answers from server-verified numbers only</p>
           </div>
         </div>
         <div className="mt-3 space-y-1.5">
@@ -1577,6 +1705,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
           ))}
         </div>
       </section>
+
+      <AskNova game={game} />
 
       <PanelSection title="The numbers Nova used">
         <div className="grid grid-cols-2 gap-2">

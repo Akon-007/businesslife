@@ -96,11 +96,11 @@ export function ReportModal({
           <div
             className={clsx(
               'rounded-2xl px-4 py-2.5 text-right',
-              positive ? 'bg-brand-50 text-brand-800' : 'bg-coral/10 text-[#9c3426]',
+              positive ? 'bg-success-soft text-success-strong' : 'bg-coral-soft text-coral',
             )}
           >
             <p className="text-[9px] font-bold uppercase tracking-[0.12em] opacity-60">Net cash</p>
-            <p className="font-display text-[24px] font-semibold leading-none tabular-nums">
+            <p className="figure text-[22px] font-semibold leading-none tabular-nums">
               {money(report.net, { sign: true })}
             </p>
           </div>
@@ -110,15 +110,69 @@ export function ReportModal({
           <div className="rounded-2xl border border-line bg-white p-4">
             <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-400">Cash flow</p>
             <div className="mt-3 space-y-2.5">
-              <BarRow label="Revenue" value={report.revenue} max={Math.max(report.revenue, report.costs)} color="#12a060" valueLabel={money(report.revenue)} />
-              <BarRow label="Payroll" value={report.payroll} max={Math.max(report.revenue, report.costs)} color="#7c6cf6" valueLabel={money(report.payroll)} />
-              <BarRow label="Overhead" value={report.overhead} max={Math.max(report.revenue, report.costs)} color="#ffc94a" valueLabel={money(report.overhead)} />
-              <BarRow label="Interest" value={report.interest} max={Math.max(report.revenue, report.costs)} color="#ff6f61" valueLabel={money(report.interest)} />
+              <BarRow label="Revenue" value={report.revenue} max={Math.max(report.revenue, report.costs)} color="#17c995" valueLabel={money(report.revenue)} />
+              <BarRow label="Payroll" value={report.payroll} max={Math.max(report.revenue, report.costs)} color="#5a4be0" valueLabel={money(report.payroll)} />
+              <BarRow label="Overhead" value={report.overhead} max={Math.max(report.revenue, report.costs)} color="#f5a623" valueLabel={money(report.overhead)} />
+              <BarRow label="Interest" value={report.interest} max={Math.max(report.revenue, report.costs)} color="#e5484d" valueLabel={money(report.interest)} />
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
               <span className="text-[10.5px] font-semibold text-ink-500">Cash end of month</span>
-              <span className="font-display text-[15px] font-semibold text-ink">{money(report.cashEnd)}</span>
+              <span className="figure text-[14px] font-semibold text-ink">{money(report.cashEnd)}</span>
             </div>
+            <div className="mt-1.5 flex items-center justify-between">
+              <span className="text-[10.5px] font-semibold text-ink-500">Net profit</span>
+              <span className={clsx('figure text-[14px] font-semibold', (report.netProfit ?? 0) >= 0 ? 'text-brand-700' : 'text-coral')}>
+                {money(report.netProfit ?? 0, { sign: (report.netProfit ?? 0) < 0 })}
+              </span>
+            </div>
+            {(report.billed ?? 0) > 0 ? (
+              <div className="mt-2 rounded-xl bg-paper-3/60 px-3 py-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-400">Supplier bills</p>
+                <div className="mt-1.5 space-y-1 text-[10.5px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Put on 30-day terms</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.billed ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Paid at this close</span>
+                    <span className="font-semibold tabular-nums text-brand-700">{money(report.billsPaid ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Still payable</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.payables ?? 0)}</span>
+                  </div>
+                </div>
+                {(report.lateFees ?? 0) > 0 && (
+                  <p className="mt-1.5 text-[9.5px] font-semibold text-gold-ink">
+                    {money(report.lateFees ?? 0)} in late fees — a bill rolled over because cash was short.
+                  </p>
+                )}
+              </div>
+            ) : null}
+            {report.invoiced > 0 ? (
+              <div className="mt-2 rounded-xl bg-paper-3/60 px-3 py-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-400">Invoices on terms</p>
+                <div className="mt-1.5 space-y-1 text-[10.5px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Invoiced (booked)</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.invoiced)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Collected in cash</span>
+                    <span className="font-semibold tabular-nums text-brand-700">{money(report.collected)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-500">Still receivable</span>
+                    <span className="font-semibold tabular-nums text-ink">{money(report.receivables)}</span>
+                  </div>
+                </div>
+                {report.overdue > 0 ? (
+                  <p className="mt-1.5 text-[9.5px] font-semibold text-gold-ink">
+                    {report.overdue} invoice{report.overdue === 1 ? '' : 's'} missed the due date — expect roughly 80% next month.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -188,7 +242,7 @@ export function ReportModal({
 
         {report.newAchievements.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl bg-gold-soft/40 px-3 py-2.5">
-            <Trophy className="size-3.5 text-[#9a6b12]" />
+            <Trophy className="size-3.5 text-gold-ink" />
             {report.newAchievements.map((id) => (
               <span key={id} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-ink-600">
                 {ACHIEVEMENTS[id]?.label ?? id}
@@ -350,7 +404,7 @@ export function RunEndModal({
         particleCount: 90,
         spread: 70,
         origin: { y: 0.35 },
-        colors: ['#0b8550', '#c9f269', '#ffc94a', '#ffffff'],
+        colors: ['#0f9c72', '#35e0a1', '#f5a623', '#ffffff'],
         disableForReducedMotion: true,
       })
     }
@@ -406,7 +460,7 @@ export function RunEndModal({
                   <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">Valuation over {game.month} months</p>
                   <p className="text-[10px] font-semibold text-lime">{money(game.valuation, { compact: true })}</p>
                 </div>
-                <Sparkline data={history} color="#c9f269" height={48} />
+                <Sparkline data={history} color="#35e0a1" height={48} />
               </div>
             )}
 
@@ -500,7 +554,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
 
         <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/40 p-3.5">
-          <Lightbulb className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+          <Lightbulb className="mt-0.5 size-4 shrink-0 text-gold-ink" />
           <p className="text-[11px] leading-relaxed text-ink-700">
             There is no single win condition. The score blends valuation, revenue, reputation, quality and equity kept.
             A small, profitable company you own can beat a large one you sold.
@@ -525,10 +579,12 @@ export function ResetModal({
   open,
   onClose,
   onConfirm,
+  onRestart,
 }: {
   open: boolean
   onClose: () => void
   onConfirm: () => void
+  onRestart: () => void
 }) {
   return (
     <Modal
@@ -539,12 +595,20 @@ export function ResetModal({
       description="Your current company moves to the archive. Nothing is deleted."
     >
       <div className="flex items-start gap-2.5 rounded-xl bg-gold-soft/40 p-3">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-[#9a6b12]" />
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           You will start a fresh company. This run stays saved in this browser so you can reopen it later.
         </p>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <button
+        onClick={onRestart}
+        className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-brand-300 bg-brand-50 text-sm font-semibold text-brand-800 transition hover:bg-brand-100"
+      >
+        <RotateCcw className="size-4" />
+        Replay this scenario from the start
+      </button>
+      <p className="mt-1.5 text-center text-[10px] text-ink-400">Same seed, same market, same starting capital — decisions are what change.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           onClick={onClose}
           className="inline-flex h-11 items-center justify-center rounded-full border border-line bg-white text-sm font-semibold text-ink-600 transition hover:bg-paper-3"
@@ -555,8 +619,7 @@ export function ResetModal({
           onClick={onConfirm}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-ink text-sm font-semibold text-white transition hover:bg-ink-800"
         >
-          <RotateCcw className="size-4" />
-          Archive & restart
+          New company
         </button>
       </div>
     </Modal>
@@ -573,7 +636,12 @@ export function Toast({ toast, onClear }: { toast: { id: string; message: string
   if (!toast) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center px-4 lg:bottom-8">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="pointer-events-none fixed inset-x-0 bottom-24 z-[90] flex justify-center px-4 lg:bottom-8"
+    >
       <div
         className={clsx(
           'animate-rise pointer-events-auto flex items-center gap-2 rounded-full px-4 py-2.5 text-[12px] font-semibold shadow-float ring-1',
@@ -583,7 +651,7 @@ export function Toast({ toast, onClear }: { toast: { id: string; message: string
         )}
       >
         {toast.tone === 'good' ? (
-          <BadgeCheck className="size-4" />
+          <BadgeCheck className="size-4" aria-hidden />
         ) : toast.tone === 'bad' ? (
           <ShieldAlert className="size-4" />
         ) : (

@@ -13,6 +13,7 @@ import {
   Handshake,
   Landmark,
   MapPin,
+  Receipt,
   RotateCcw,
   ShieldAlert,
   Smartphone,
@@ -78,12 +79,13 @@ const QUICK_ACTIONS: { panel: PanelId; label: string; icon: LucideIcon }[] = [
   { panel: 'bank', label: 'Bank', icon: Landmark },
   { panel: 'investors', label: 'Raise', icon: Handshake },
   { panel: 'crisis', label: 'Crisis', icon: ShieldAlert },
+  { panel: 'finance', label: 'Finance', icon: Receipt },
   { panel: 'journey', label: 'Journey', icon: Trophy },
   { panel: 'apps', label: 'Apps', icon: Smartphone },
   { panel: 'nova', label: 'Nova', icon: Compass },
 ]
 
-const DESKTOP_ACTIONS = new Set<PanelId>(['market', 'talent', 'bank', 'investors'])
+const DESKTOP_ACTIONS = new Set<PanelId>(['market', 'talent', 'bank', 'investors', 'finance'])
 
 const TUTORIAL_STEPS: { title: string; body: string; action: string; panel: PanelId | null; icon: LucideIcon }[] = [
   {
@@ -128,6 +130,8 @@ export default function Play() {
 function GameBoard({ game }: { game: GameState }) {
   const advance = useGame((state) => state.advance)
   const reset = useGame((state) => state.reset)
+  const hydrateAuthority = useGame((state) => state.hydrateAuthority)
+  const restartScenario = useGame((state) => state.restartScenario)
   const resolve = useGame((state) => state.resolve)
   const dismissReport = useGame((state) => state.dismissReport)
   const notify = useGame((state) => state.notify)
@@ -157,6 +161,10 @@ function GameBoard({ game }: { game: GameState }) {
   const runEnded = game.status !== 'active'
   const industry = industryById(game.industry)
   const openBranchCount = (game.branches ?? []).filter((branch) => branch.openedMonth !== null).length
+
+  useEffect(() => {
+    void hydrateAuthority()
+  }, [game.backendCompanyId, hydrateAuthority])
 
   useEffect(() => {
     if (game.pendingCrisis && !game.lastReport && !crisisView) {
@@ -212,7 +220,7 @@ function GameBoard({ game }: { game: GameState }) {
     <div className="min-h-[100svh] bg-paper lg:flex lg:h-[100svh] lg:flex-col lg:overflow-hidden">
       <TopBar game={game} metrics={metrics} onHelp={() => setHelpOpen(true)} onReset={() => setResetOpen(true)} />
 
-      <div className="relative h-[46svh] min-h-[340px] shrink-0 overflow-hidden bg-sky lg:h-auto lg:min-h-0 lg:flex-1">
+      <main id="main" tabIndex={-1} className="relative h-[46svh] min-h-[340px] shrink-0 overflow-hidden bg-sky outline-none lg:h-auto lg:min-h-0 lg:flex-1">
         <CityMap
           className="absolute inset-0 h-full w-full"
           variant="game"
@@ -264,13 +272,13 @@ function GameBoard({ game }: { game: GameState }) {
               onClick={() => setEndOpen(true)}
               className="glass-strong inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[11px] font-bold text-ink shadow-soft"
             >
-              <Trophy className="size-3.5 text-[#9a6b12]" />
+              <Trophy className="size-3.5 text-gold-ink" />
               Run ended · view scorecard
               <ChevronRight className="size-3.5 text-ink-400" />
             </button>
           </div>
         )}
-      </div>
+      </main>
 
       <MobileSummary game={game} metrics={metrics} insights={insights} onNavigate={setPanel} onHelp={() => setHelpOpen(true)} />
 
@@ -312,6 +320,10 @@ function GameBoard({ game }: { game: GameState }) {
         onConfirm={() => {
           setResetOpen(false)
           reset()
+        }}
+        onRestart={() => {
+          setResetOpen(false)
+          restartScenario()
         }}
       />
       <Toast toast={toast} onClear={clearToast} />
@@ -424,6 +436,13 @@ function TopBar({
           <HudPill label="MRR" value={money(metrics.mrr, { compact: true })} />
           <HudPill label="Value" value={money(game.valuation, { compact: true })} />
           <HudPill label="Runway" value={`${runway} mo`} tone={runwayTone} />
+          {game.authority ? (
+            <HudPill
+              label="Score"
+              value={`${game.authority.score}`}
+              tone={game.authority.integrity === 'flagged' ? 'warn' : 'good'}
+            />
+          ) : null}
           <div className="hidden xl:block">
             <HudPill label="Climate" value={game.economy.label} tone={climateTone} />
           </div>
@@ -458,6 +477,7 @@ function TopBar({
         <HudChip label="MRR" value={money(metrics.mrr, { compact: true })} />
         <HudChip label="Value" value={money(game.valuation, { compact: true })} />
         <HudChip label="Runway" value={`${runway}mo`} tone={runwayTone} />
+        {game.authority ? <HudChip label="Score" value={`${game.authority.score}`} tone={game.authority.integrity === 'flagged' ? 'warn' : 'good'} /> : null}
         <HudChip label="Climate" value={game.economy.label} tone={climateTone} />
         <HudChip label="Customers" value={number(game.customers)} />
         <HudChip label="Team" value={number(game.team.length)} />
@@ -472,9 +492,9 @@ function HudPill({ label, value, tone }: { label: string; value: string; tone?: 
       <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">{label}</p>
       <p
         className={clsx(
-          'text-[11.5px] font-bold leading-tight tabular-nums',
+          'figure text-[11px] font-semibold leading-tight tabular-nums',
           tone === 'good' && 'text-lime',
-          tone === 'warn' && 'text-gold',
+          tone === 'warn' && 'text-gold-ink',
           tone === 'bad' && 'text-coral',
           !tone && 'text-white',
         )}
@@ -491,9 +511,9 @@ function HudChip({ label, value, tone }: { label: string; value: string; tone?: 
       <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-white/35">{label}</span>
       <span
         className={clsx(
-          'text-[10.5px] font-bold tabular-nums',
+          'figure text-[10px] font-semibold tabular-nums',
           tone === 'good' && 'text-lime',
-          tone === 'warn' && 'text-gold',
+          tone === 'warn' && 'text-gold-ink',
           tone === 'bad' && 'text-coral',
           !tone && 'text-white/90',
         )}
@@ -512,7 +532,10 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
     <div className="glass-strong rounded-2xl p-3.5">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-400">Meridian City</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-ink-400">
+            Meridian City
+            {game.seed ? <span className="ml-1.5 font-bold normal-case tracking-normal text-ink-300">· seed #{game.seed}</span> : null}
+          </p>
           <p className="mt-0.5 font-display text-[17px] font-semibold leading-tight text-ink">
             Day {game.day}
             <span className="text-[12px] font-medium text-ink-400"> · month {game.month + 1}</span>
@@ -526,7 +549,7 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-white/70 px-2.5 py-1.5">
           <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">Runway</p>
-          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-[#9a6b12]' : 'text-coral')}>
+          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-gold-ink' : 'text-coral')}>
             {runway}
           </p>
         </div>
@@ -627,7 +650,7 @@ function NovaCard({
         </span>
         <div>
           <p className="text-[11.5px] font-bold text-ink">Nova</p>
-          <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">AI chief of staff</p>
+          <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">Advisor · grounded</p>
         </div>
         <span className="ml-auto flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[8px] font-bold text-brand-700">
           <span className="size-1 rounded-full bg-brand-500 blink" />
@@ -866,7 +889,7 @@ function MobileSummary({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-400">Cash trajectory</p>
-              <p className="mt-0.5 font-display text-[18px] font-semibold text-ink">{money(game.cash)}</p>
+              <p className="figure mt-0.5 text-[17px] font-semibold text-ink">{money(game.cash)}</p>
             </div>
             <span
               className={clsx(
