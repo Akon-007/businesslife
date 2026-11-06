@@ -24,6 +24,7 @@ npm run verify:scoring  # client score == server score across industries/strateg
 npm run verify:determinism  # same seed + same decisions = identical run
 npm run verify:cash     # invoices move cash when they fall due, not when the sale is booked
 npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash every month
+npm run verify:contrast # the design tokens clear WCAG AA for the text pairs the UI uses
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run build           # production build
@@ -49,6 +50,7 @@ GitHub Actions runs the same suite on every push and pull request
 | Accounts, sessions, password hashing | `backend/auth.ts` |
 | Grading rubric and rationale rules | `backend/rubric.ts` (client mirror: `src/game/rubric.ts`) |
 | Instructor portal | `src/pages/Lecturer.tsx` |
+| Design tokens, fonts, contrast gate | `src/index.css`, `scripts/verify-contrast.mjs` |
 
 ### Server authority
 
@@ -78,6 +80,10 @@ Every close produces three statements, kept for 24 months and readable in the **
   retained earnings. The panel shows whether the sheet balances instead of hiding it.
 - **Cash flow** — operating + investing + financing = the change in cash, and it always ends at the cash
   the engine reports.
+
+The panel also carries a **budget vs actual** view (what you planned to spend against what the close
+charged) and a **forecast** tab that repeats the last three months forward and turns them into a runway
+estimate — both labelled as arithmetic on your own history rather than a model.
 
 Capital structure moves post to the same ledger: opening a market capitalises fixed assets and counts as
 capex, investor money is financing, loans and repayments are borrowing/repayment, and crisis, deal and

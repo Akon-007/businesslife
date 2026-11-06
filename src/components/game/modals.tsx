@@ -143,7 +143,7 @@ export function ReportModal({
                   </div>
                 </div>
                 {(report.lateFees ?? 0) > 0 && (
-                  <p className="mt-1.5 text-[9.5px] font-semibold text-[#8a5f12]">
+                  <p className="mt-1.5 text-[9.5px] font-semibold text-gold-ink">
                     {money(report.lateFees ?? 0)} in late fees — a bill rolled over because cash was short.
                   </p>
                 )}
@@ -167,7 +167,7 @@ export function ReportModal({
                   </div>
                 </div>
                 {report.overdue > 0 ? (
-                  <p className="mt-1.5 text-[9.5px] font-semibold text-[#8a5f12]">
+                  <p className="mt-1.5 text-[9.5px] font-semibold text-gold-ink">
                     {report.overdue} invoice{report.overdue === 1 ? '' : 's'} missed the due date — expect roughly 80% next month.
                   </p>
                 ) : null}
@@ -242,7 +242,7 @@ export function ReportModal({
 
         {report.newAchievements.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-xl bg-gold-soft/40 px-3 py-2.5">
-            <Trophy className="size-3.5 text-[#8a5f12]" />
+            <Trophy className="size-3.5 text-gold-ink" />
             {report.newAchievements.map((id) => (
               <span key={id} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-ink-600">
                 {ACHIEVEMENTS[id]?.label ?? id}
@@ -554,7 +554,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
 
         <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/40 p-3.5">
-          <Lightbulb className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
+          <Lightbulb className="mt-0.5 size-4 shrink-0 text-gold-ink" />
           <p className="text-[11px] leading-relaxed text-ink-700">
             There is no single win condition. The score blends valuation, revenue, reputation, quality and equity kept.
             A small, profitable company you own can beat a large one you sold.
@@ -595,7 +595,7 @@ export function ResetModal({
       description="Your current company moves to the archive. Nothing is deleted."
     >
       <div className="flex items-start gap-2.5 rounded-xl bg-gold-soft/40 p-3">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           You will start a fresh company. This run stays saved in this browser so you can reopen it later.
         </p>

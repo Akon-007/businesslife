@@ -272,7 +272,7 @@ function GameBoard({ game }: { game: GameState }) {
               onClick={() => setEndOpen(true)}
               className="glass-strong inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[11px] font-bold text-ink shadow-soft"
             >
-              <Trophy className="size-3.5 text-[#8a5f12]" />
+              <Trophy className="size-3.5 text-gold-ink" />
               Run ended · view scorecard
               <ChevronRight className="size-3.5 text-ink-400" />
             </button>
@@ -494,7 +494,7 @@ function HudPill({ label, value, tone }: { label: string; value: string; tone?: 
         className={clsx(
           'figure text-[11px] font-semibold leading-tight tabular-nums',
           tone === 'good' && 'text-lime',
-          tone === 'warn' && 'text-gold',
+          tone === 'warn' && 'text-gold-ink',
           tone === 'bad' && 'text-coral',
           !tone && 'text-white',
         )}
@@ -513,7 +513,7 @@ function HudChip({ label, value, tone }: { label: string; value: string; tone?: 
         className={clsx(
           'figure text-[10px] font-semibold tabular-nums',
           tone === 'good' && 'text-lime',
-          tone === 'warn' && 'text-gold',
+          tone === 'warn' && 'text-gold-ink',
           tone === 'bad' && 'text-coral',
           !tone && 'text-white/90',
         )}
@@ -549,7 +549,7 @@ function ObjectiveCard({ game, metrics }: { game: GameState; metrics: GameMetric
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-white/70 px-2.5 py-1.5">
           <p className="text-[8.5px] font-bold uppercase tracking-[0.1em] text-ink-400">Runway</p>
-          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-[#8a5f12]' : 'text-coral')}>
+          <p className={clsx('text-[12px] font-bold', metrics.runway >= 6 ? 'text-brand-700' : metrics.runway >= 3 ? 'text-gold-ink' : 'text-coral')}>
             {runway}
           </p>
         </div>

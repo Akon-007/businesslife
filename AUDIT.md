@@ -393,19 +393,28 @@ the deal cash is booked as one-off income; the imbalance is 0 across all four in
 
 **Honest boundaries:** depreciation is a flat 2% of fixed assets a month (no useful-life modelling); no
 tax, no payroll taxes, no accruals for payroll; the balance sheet has no goodwill, intangibles or deferred
-revenue; budgets and multi-month forecasts are not built (the Finance centre has a what-if estimate, not a
-forecast engine). Statements are monthly only.
+revenue. The Finance centre's **budget** tab compares the spend plan with what the month charged, and its
+**forecast** tab repeats the last three closes forward — both are transparent arithmetic on your own
+history, not a demand model or a variance-analysis engine. Statements are monthly only.
 
 ### 9.9 Finance centre and the §12.1 visual language — **in progress**
 
 | Before | After |
 |---|---|
-| No place to read the books | **Finance centre** panel (`src/components/game/FinancePanel.tsx`, reachable from the city HUD and the quick actions): profit & loss, balance sheet (with a visible "does it balance" check), cash flow, invoices, bills with status, and a what-if estimator; month-by-month navigation across the last 24 closes |
+| No place to read the books | **Finance centre** panel (`src/components/game/FinancePanel.tsx`, reachable from the city HUD and the quick actions): profit & loss, balance sheet (with a visible "does it balance" check), cash flow, budget vs actual, a three-month forecast, invoices, bills with status, and a what-if estimator; month-by-month navigation across the last 24 closes |
 | Month report showed cash only | The report adds net profit and a supplier-bill block (billed / paid / payable / late fees) |
 | Palette and fonts drifted from the brief | `#101827` navy, `#176BFF` electric blue, `#17C995` success green, `#F5A623` gold, cool neutral paper; Space Grotesk (display), Inter (interface), JetBrains Mono for every financial figure via one `figure` utility; self-hosted variable fonts through `@fontsource-variable/*` (the manual `public/fonts` woff2 files are gone) |
 | Figures set in the display face | Cash, profit, statement lines, HUD pills and KPIs are monospaced with tabular numerals |
 
-**Honest boundary:** there is no headless browser in this environment, so no screenshot, contrast sweep
-or interaction test was run against the retheme. The claims above are about the code (tokens, fonts, the
-`figure` utility, the panel's markup and ARIA roles), not about how it looks. Motion was left alone apart
-from the existing `prefers-reduced-motion` override; `npm run lint` and `npm run build` are clean.
+**Contrast is now a gate, not a claim.** `scripts/verify-contrast.mjs` (wired into `npm run verify`) parses
+the `@theme` tokens and checks the 24 foreground/background pairs the UI actually uses against WCAG 2.1 AA —
+body text at 4.5:1, focus rings and borders at 3:1/1.2:1. It caught three real failures from this retheme:
+`ink-400` labels (3.98:1), success/coral figures (3.49:1 / 3.91:1) and gold text on white (2.03:1). All were
+darkened (or, for gold, moved to a separate `gold-ink` token used only for text) and the suite now passes
+24/24.
+
+**Honest boundary:** there is still no headless browser in this environment, so no screenshot and no
+interaction test was run against the retheme. The contrast gate is arithmetic on token values — it proves the
+palette pairs clear AA, not that every component picked the right pair, and it says nothing about layout.
+Motion was left alone apart from the existing `prefers-reduced-motion` override; `npm run lint` and
+`npm run build` are clean.

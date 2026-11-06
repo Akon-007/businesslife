@@ -13,9 +13,11 @@
   --color-ink-700: #1f2a44;
   --color-ink-600: #33405c;
   --color-ink-500: #4e5c7a;
-  --color-ink-400: #71809c;
+  --color-ink-400: #5b6880;
   --color-ink-300: #9da9be;
   --color-ink-200: #c3cbd9;
+
+  /* Text-safe variants (WCAG AA at 11–13px on light surfaces) */
 
   /* Cool neutral surfaces */
   --color-paper: #f4f6fb;
@@ -38,20 +40,22 @@
 
   /* Success green */
   --color-success: #17c995;
-  --color-success-strong: #0f9c72;
+  --color-success-strong: #087a58;
   --color-success-soft: #d6f7ec;
 
   /* Gold — warnings, milestones, cash milestones */
   --color-gold: #f5a623;
   --color-gold-soft: #fdf0d6;
+  /* Gold for text: the raw gold is a fill colour and fails contrast on white. */
+  --color-gold-ink: #8a5f12;
 
   /* Supporting accents */
   --color-sky: #dbe9ff;
   --color-sky-deep: #9cc4ff;
   --color-lime: #35e0a1;
   --color-lime-soft: #d6f7ec;
-  --color-coral: #e5484d;
-  --color-coral-soft: #fde4e6;
+  --color-coral: #c9302c;
+  --color-coral-soft: #ffeef0;
   --color-violet: #5a4be0;
   --color-violet-soft: #e7e4fb;
 

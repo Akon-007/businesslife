@@ -596,7 +596,7 @@ function MarketPanel({ onClose, onNavigate }: { onClose: () => void; onNavigate:
           onClick={() => onNavigate('expansion')}
           className="flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2.5 text-left transition hover:border-line-strong"
         >
-          <MapPin className="size-4 shrink-0 text-[#8a5f12]" />
+          <MapPin className="size-4 shrink-0 text-gold-ink" />
           <span className="min-w-0">
             <span className="block text-[11px] font-bold text-ink">Expansion</span>
             <span className="block text-[9.5px] text-ink-400">{game.branches.filter((branch) => branch.openedMonth !== null).length} markets open</span>
@@ -761,7 +761,7 @@ function TalentPanel() {
       </PanelSection>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <Coins className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
+        <Coins className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           Payroll is your largest fixed cost. A ₦6,000 salary is <b>{money(72_000)}</b> a year — against your current
           burn, that is real runway.
@@ -1308,7 +1308,7 @@ function SupplierPanel() {
 const STAGE_META: Record<string, { label: string; tone: string }> = {
   lead: { label: 'Lead', tone: 'bg-paper-3 text-ink-500' },
   qualified: { label: 'Qualified', tone: 'bg-violet-soft text-violet' },
-  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-[#8a5f12]' },
+  negotiation: { label: 'Negotiating', tone: 'bg-gold-soft text-gold-ink' },
 }
 
 function SalesPanel() {
@@ -1366,7 +1366,7 @@ function SalesPanel() {
                         onClick={() => toggleDiscount(deal.id)}
                         className={clsx(
                           'rounded-full px-2 py-1 text-[9.5px] font-bold transition',
-                          deal.discount ? 'bg-gold-soft text-[#8a5f12]' : 'bg-paper-3 text-ink-500 hover:text-ink',
+                          deal.discount ? 'bg-gold-soft text-gold-ink' : 'bg-paper-3 text-ink-500 hover:text-ink',
                         )}
                       >
                         {deal.discount ? '10% discount on' : 'Offer 10% discount'}
@@ -1489,7 +1489,7 @@ function ExpansionPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }
       </div>
 
       <div className="flex items-start gap-2.5 rounded-2xl bg-gold-soft/50 p-3.5 ring-1 ring-gold/30">
-        <MapPin className="mt-0.5 size-4 shrink-0 text-[#8a5f12]" />
+        <MapPin className="mt-0.5 size-4 shrink-0 text-gold-ink" />
         <p className="text-[11px] leading-relaxed text-ink-700">
           A second market only works when the first one no longer needs your attention. {industry.name} branches add
           demand every month and overhead whether customers arrive or not.

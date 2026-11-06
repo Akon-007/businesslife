@@ -50,7 +50,7 @@ export function Stat({
           'figure mt-1 text-[16px] font-semibold leading-none tabular-nums',
           tone === 'good' && 'text-brand-700',
           tone === 'bad' && 'text-coral',
-          tone === 'warn' && 'text-gold',
+          tone === 'warn' && 'text-gold-ink',
           tone === 'neutral' && 'text-ink',
         )}
       >

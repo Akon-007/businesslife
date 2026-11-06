@@ -616,7 +616,7 @@ function RosterCard({
                           <p
                             className={clsx(
                               'text-[9.5px] font-semibold',
-                              entry.seedMatch === true ? 'text-emerald-700' : entry.seedMatch === false ? 'text-[#8a5f12]' : 'text-ink-400',
+                              entry.seedMatch === true ? 'text-emerald-700' : entry.seedMatch === false ? 'text-gold-ink' : 'text-ink-400',
                             )}
                           >
                             {entry.seedMatch === true ? 'assigned seed' : entry.seedMatch === false ? 'different seed' : 'no scenario seed'}
@@ -704,7 +704,7 @@ function RosterCard({
                             aria-label={`Rationale for ${entry.name}`}
                             className={clsx(inputClass, 'h-auto py-1.5 text-[11px]')}
                           />
-                          <p className={clsx('text-[9px]', rationaleReady ? 'text-ink-400' : 'text-[#8a5f12]')}>
+                          <p className={clsx('text-[9px]', rationaleReady ? 'text-ink-400' : 'text-gold-ink')}>
                             {rationale.trim().length}/{MIN_RATIONALE} characters — stored with the grade and hashed into the audit chain.
                           </p>
                           <button

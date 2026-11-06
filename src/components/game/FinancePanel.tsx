@@ -6,12 +6,14 @@ import type { Bill, GameState, Invoice, Statements } from '../../game/types'
 import { money, monthLabel, percent } from '../../lib/format'
 import { PanelSection } from './bits'
 
-type TabId = 'pl' | 'balance' | 'cash' | 'invoices' | 'bills' | 'whatif'
+type TabId = 'pl' | 'balance' | 'cash' | 'budget' | 'forecast' | 'invoices' | 'bills' | 'whatif'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'pl', label: 'Profit & loss' },
   { id: 'balance', label: 'Balance sheet' },
   { id: 'cash', label: 'Cash flow' },
+  { id: 'budget', label: 'Budget' },
+  { id: 'forecast', label: 'Forecast' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'bills', label: 'Bills' },
   { id: 'whatif', label: 'What if' },
@@ -161,7 +163,7 @@ export function FinancePanel() {
         </div>
         <div className="rounded-xl bg-paper-3/70 px-3 py-2.5">
           <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-400">You owe</p>
-          <p className={clsx('figure mt-1 text-[16px] font-semibold tabular-nums', (game.payables ?? 0) > 0 ? 'text-gold' : 'text-ink')}>
+          <p className={clsx('figure mt-1 text-[16px] font-semibold tabular-nums', (game.payables ?? 0) > 0 ? 'text-gold-ink' : 'text-ink')}>
             {money(game.payables ?? 0)}
           </p>
         </div>
@@ -201,12 +203,13 @@ export function FinancePanel() {
         ))}
       </div>
 
-      {tab !== 'invoices' && tab !== 'bills' && tab !== 'whatif' && (
+      {tab !== 'invoices' && tab !== 'bills' && tab !== 'whatif' && tab !== 'forecast' && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white px-3 py-2">
           <p className="text-[11px] text-ink-500">
             {tab === 'pl' && 'What the month earned and what it cost.'}
             {tab === 'balance' && 'What you own, what you owe, and what is left for you.'}
             {tab === 'cash' && 'Cash in and out — profit is not the same as cash.'}
+            {tab === 'budget' && 'What you planned to spend against what the month actually charged.'}
           </p>
           <MonthPicker month={statement?.month ?? latest.month} onChange={setPickedMonth} max={latest.month} />
         </div>
@@ -315,6 +318,10 @@ export function FinancePanel() {
         </PanelSection>
       )}
 
+      {tab === 'budget' && statement && <BudgetTab statement={statement} game={game} />}
+
+      {tab === 'forecast' && <ForecastTab statements={statements} cash={game.cash} />}
+
       {tab === 'invoices' && (
         <PanelSection
           title="Invoices"
@@ -343,7 +350,7 @@ export function FinancePanel() {
           hint={`${openBills.length} open · ${money(game.payables ?? 0)} payable${overdueBills.length ? ` · ${overdueBills.length} overdue` : ''}`}
         >
           <div id="finance-panel-bills" role="tabpanel" aria-labelledby="finance-tab-bills">
-            <div className="mb-3 rounded-xl bg-gold-soft/70 px-3 py-2 text-[11px] leading-relaxed text-[#8a5f12]">
+            <div className="mb-3 rounded-xl bg-gold-soft/70 px-3 py-2 text-[11px] leading-relaxed text-gold-ink">
               <strong className="font-semibold">Supplier terms.</strong> 45% of stock is billed on 30-day terms. Bills are paid at the
               next close if cash allows; if it does not, the bill rolls over with a 2% late fee and shows as overdue.
             </div>
@@ -423,6 +430,133 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         <StatusPill status={invoice.status} />
       </div>
     </li>
+  )
+}
+
+function BudgetTab({ statement, game }: { statement: Statements; game: GameState }) {
+  const snapshot = game.history.find((item) => item.month >= statement.month)
+  const customers = snapshot?.customers ?? game.customers
+  const realisedPerCustomer = customers > 0 ? statement.income.revenue / customers : 0
+  const rows: { label: string; plan: number; actual: number; hint?: string }[] = [
+    { label: 'Marketing', plan: game.marketingSpend, actual: statement.income.marketing, hint: 'Budget set in the plan panel.' },
+    { label: 'Product', plan: game.productSpend, actual: statement.income.product, hint: 'Quality budget for the month.' },
+    { label: 'Training', plan: game.trainingSpend, actual: statement.income.training, hint: game.team.length ? 'Per teammate, monthly.' : 'No team to train yet.' },
+  ]
+
+  return (
+    <PanelSection
+      title={`Budget vs actual · ${monthLabel(statement.month)}`}
+      hint="The plan you set, the amount the month charged, and where they differed."
+    >
+      <div id="finance-panel-budget" role="tabpanel" aria-labelledby="finance-tab-budget">
+        <table className="w-full border-collapse">
+          <caption className="sr-only">Budget against actual spend</caption>
+          <thead>
+            <tr className="border-b border-line text-[9.5px] uppercase tracking-[0.11em] text-ink-400">
+              <th scope="col" className="py-1.5 text-left font-bold">Line</th>
+              <th scope="col" className="py-1.5 text-right font-bold">Planned</th>
+              <th scope="col" className="py-1.5 text-right font-bold">Actual</th>
+              <th scope="col" className="py-1.5 text-right font-bold">Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const variance = row.actual - row.plan
+              return (
+                <tr key={row.label} className="border-b border-line/60">
+                  <th scope="row" className="py-2 pr-3 text-left font-normal">
+                    <span className="text-[12px] text-ink-600">{row.label}</span>
+                    {row.hint && <span className="mt-0.5 block text-[10.5px] leading-snug text-ink-400">{row.hint}</span>}
+                  </th>
+                  <td className="py-2 text-right"><Figure value={row.plan} /></td>
+                  <td className="py-2 text-right"><Figure value={row.actual} /></td>
+                  <td className="py-2 text-right">
+                    <span className={clsx('figure text-[12.5px] tabular-nums', Math.abs(variance) < 1 ? 'text-ink-400' : variance > 0 ? 'text-coral' : 'text-success-strong')}>
+                      {Math.abs(variance) < 1 ? 'on plan' : `${variance > 0 ? '+' : '−'}${money(Math.abs(variance))}`}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-paper-3/70 px-3 py-2">
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-400">Price planned</p>
+            <p className="figure mt-1 text-[14px] font-semibold text-ink">{money(game.price)}</p>
+          </div>
+          <div className="rounded-xl bg-paper-3/70 px-3 py-2">
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-400">Revenue per customer</p>
+            <p className="figure mt-1 text-[14px] font-semibold text-ink">{money(realisedPerCustomer)}</p>
+            <p className="mt-0.5 text-[10px] text-ink-400">
+              {realisedPerCustomer >= game.price ? 'at or above list price' : 'discounting or mix below list'}
+            </p>
+          </div>
+        </div>
+
+        <p className="mt-3 rounded-xl bg-paper-3/60 px-3 py-2 text-[11px] leading-relaxed text-ink-500">
+          Spend lines move in whole months, so a variance usually means the budget changed after the close it applied to.
+          A negative spend variance is money you did not spend — not profit you earned.
+        </p>
+      </div>
+    </PanelSection>
+  )
+}
+
+function ForecastTab({ statements, cash }: { statements: Statements[]; cash: number }) {
+  const recent = statements.slice(-3)
+  const average = (pick: (item: Statements) => number) => (recent.length ? Math.round(recent.reduce((sum, item) => sum + pick(item), 0) / recent.length) : 0)
+
+  const revenue = average((item) => item.income.revenue)
+  const netProfit = average((item) => item.income.netProfit)
+  const depreciation = average((item) => item.income.depreciation)
+  const operatingCash = average((item) => item.cashFlow.operating)
+  const monthlyDelta = netProfit + depreciation
+
+  const horizon = [1, 2, 3].map((step) => ({
+    step,
+    month: (statements[statements.length - 1]?.month ?? 0) + step,
+    revenue: revenue * step,
+    profit: monthlyDelta * step,
+    cash: cash + monthlyDelta * step,
+  }))
+
+  const burn = operatingCash < 0 ? -operatingCash : 0
+  const runway = burn > 0 ? Math.floor(cash / burn) : null
+
+  return (
+    <PanelSection
+      title="Forecast"
+      hint="The last three months repeated forward. It is an extrapolation of your own history, not a model of demand."
+    >
+      <div id="finance-panel-forecast" role="tabpanel" aria-labelledby="finance-tab-forecast">
+        <div className="grid grid-cols-3 gap-2">
+          {horizon.map((item) => (
+            <div key={item.step} className="rounded-xl bg-paper-3/70 px-3 py-2">
+              <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-ink-400">{monthLabel(item.month)}</p>
+              <p className={clsx('figure mt-1 text-[15px] font-semibold', item.cash < 0 ? 'text-coral' : 'text-ink')}>{money(item.cash)}</p>
+              <p className="mt-0.5 text-[10px] text-ink-400">cash, {item.profit >= 0 ? '+' : '−'}{money(Math.abs(item.profit))}/mo</p>
+            </div>
+          ))}
+        </div>
+
+        <StatementTable caption="Three-month extrapolation">
+          <LineRow label="Average revenue" value={revenue} hint="Last three closes." />
+          <LineRow label="Average net profit" value={netProfit} />
+          <LineRow label="Add back depreciation" value={depreciation} hint="Non-cash, so it returns to the bank." tone="muted" />
+          <LineRow label="Monthly cash movement" value={monthlyDelta} tone="subtotal" />
+          <LineRow label="Average operating cash flow" value={operatingCash} />
+          <LineRow label="Cash today" value={cash} tone="total" />
+        </StatementTable>
+
+        <p className="mt-3 rounded-xl bg-paper-3/60 px-3 py-2 text-[11px] leading-relaxed text-ink-500">
+          {runway !== null
+            ? `Operating cash has averaged ${money(burn)} of burn a month. At that rate the current cash covers about ${runway} month${runway === 1 ? '' : 's'} — before any supplier bills you cannot pay.`
+            : 'Operating cash flow has been positive on average, so there is no burn to run down. Watch the bills tab: a month with a large payment can still take cash out.'}
+        </p>
+      </div>
+    </PanelSection>
   )
 }
 
