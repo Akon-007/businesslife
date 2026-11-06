@@ -273,11 +273,34 @@ export interface Bill {
 }
 
 /** Money that moved between closes: capex, funding, borrowing, repayments. */
+export type MarketingChannelId = 'social' | 'search' | 'content' | 'events'
+
+/** How the marketing budget is split, as shares that sum to 1. */
+export type MarketingMix = Record<MarketingChannelId, number>
+
+/** Cumulative channel performance for the run. */
+export interface ChannelStats {
+  channel: MarketingChannelId
+  spend: number
+  customers: number
+}
+
+/** One month of attribution, as shown in the report. */
+export interface ChannelPerformance {
+  channel: MarketingChannelId | 'organic'
+  spend: number
+  customers: number
+  /** Cost per customer won through this row; 0 for organic. */
+  cac: number
+}
+
 export interface FlowBucket {
   capex: number
   funding: number
   borrow: number
   repay: number
+  /** Supplier bills paid between closes (the player choosing to pay early). */
+  billsPaid: number
   /** One-off cash costs between closes (signing bonus, crisis spend, …). */
   expenses: number
   /** One-off cash income between closes (crisis upside, asset sales, …). */
@@ -391,6 +414,8 @@ export type GameOpName =
   | 'repayDebt'
   | 'setPrice'
   | 'setMarketing'
+  | 'setMarketingChannel'
+  | 'setMarketingMix'
   | 'setProduct'
   | 'setTraining'
   | 'selectSupplier'
@@ -398,6 +423,8 @@ export type GameOpName =
   | 'toggleDealDiscount'
   | 'pushDeal'
   | 'openBranch'
+  | 'payBill'
+  | 'payAllBills'
   | 'missionEvidence'
 
 /**
@@ -466,6 +493,10 @@ export interface GameState {
   bills: Bill[]
   /** Total ₦ owed to suppliers. */
   payables: number
+  /** Split of the marketing budget across channels. */
+  marketingMix: MarketingMix
+  /** Cumulative spend and customers won, per channel. */
+  channelStats: ChannelStats[]
   /** Inventory at cost. */
   inventoryValue: number
   /** Accumulated branch/expansion capex, net of depreciation. */
@@ -533,6 +564,12 @@ export interface MonthReport {
   payables: number
   lateFees: number
   depreciation: number
+  /** Attribution for the month, including the organic row. */
+  channels: ChannelPerformance[]
+  /** Blended cost per customer won this month. */
+  cac: number
+  /** Gross-margin lifetime value at the current churn rate. */
+  ltv: number
   badDebt: number
   netProfit: number
 }

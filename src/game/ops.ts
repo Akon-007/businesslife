@@ -13,12 +13,16 @@ import {
   hireCandidate,
   offerRound,
   openBranch,
+  payAllBills,
+  payBill,
   pushDeal,
   refreshCandidates,
   repayDebt,
   resolveCrisis,
   selectSupplier,
   setMarketing,
+  setMarketingChannel,
+  setMarketingMix,
   setPrice,
   setProduct,
   setRestock,
@@ -43,6 +47,8 @@ export const OP_TYPES: readonly GameOpType[] = [
   'repayDebt',
   'setPrice',
   'setMarketing',
+  'setMarketingChannel',
+  'setMarketingMix',
   'setProduct',
   'setTraining',
   'selectSupplier',
@@ -50,6 +56,8 @@ export const OP_TYPES: readonly GameOpType[] = [
   'toggleDealDiscount',
   'pushDeal',
   'openBranch',
+  'payBill',
+  'payAllBills',
   'missionEvidence',
 ] as const
 
@@ -57,7 +65,22 @@ export const OP_TYPES: readonly GameOpType[] = [
 const LIMITS: Record<string, { min: number; max: number }> = {
   amount: { min: 0, max: 500_000_000 },
   price: { min: 0, max: 5_000_000 },
+  share: { min: 0, max: 1 },
   months: { min: 0, max: 12 },
+}
+
+/** Operations that are meaningless without a target id. */
+const REQUIRED_IDS: Partial<Record<GameOpType, readonly string[]>> = {
+  resolveCrisis: ['optionId'],
+  hireCandidate: ['candidateId'],
+  fireEmployee: ['employeeId'],
+  acceptOffer: ['offerId'],
+  selectSupplier: ['supplierId'],
+  toggleDealDiscount: ['dealId'],
+  pushDeal: ['dealId'],
+  openBranch: ['branchId'],
+  payBill: ['billId'],
+  setMarketingChannel: ['channelId'],
 }
 
 const ID_MAX = 80
@@ -76,7 +99,7 @@ export function assertOp(value: unknown, index = 0): GameOp {
   const args = (raw.args ?? {}) as Record<string, unknown>
   if (typeof args !== 'object' || Array.isArray(args)) throw new InvalidOpError(`op ${index} has invalid args`)
 
-  const numericKeys: Array<keyof typeof LIMITS> = ['amount', 'price', 'months']
+  const numericKeys: Array<keyof typeof LIMITS> = ['amount', 'price', 'months', 'share']
   for (const key of numericKeys) {
     if (args[key] === undefined) continue
     const number = Number(args[key])
@@ -86,12 +109,33 @@ export function assertOp(value: unknown, index = 0): GameOp {
     }
   }
 
-  const idKeys = ['optionId', 'candidateId', 'employeeId', 'offerId', 'supplierId', 'dealId', 'branchId'] as const
+  const idKeys = ['optionId', 'candidateId', 'employeeId', 'offerId', 'supplierId', 'dealId', 'branchId', 'billId', 'channelId'] as const
   for (const key of idKeys) {
     if (args[key] === undefined) continue
     const id = args[key]
     if (typeof id !== 'string' || id.length === 0 || id.length > ID_MAX) {
       throw new InvalidOpError(`op ${index} (${op}) ${key} is not a valid id`)
+    }
+  }
+
+  for (const key of REQUIRED_IDS[op as GameOpType] ?? []) {
+    const id = args[key]
+    if (typeof id !== 'string' || id.length === 0 || id.length > ID_MAX) {
+      throw new InvalidOpError(`op ${index} (${op}) is missing a valid ${key}`)
+    }
+  }
+
+  if (op === 'setMarketingMix') {
+    const keys = ['social', 'search', 'content', 'events'] as const
+    if (!keys.some((key) => args[key] !== undefined)) {
+      throw new InvalidOpError(`op ${index} (setMarketingMix) has no channel shares`)
+    }
+    for (const key of keys) {
+      if (args[key] === undefined) continue
+      const value = Number(args[key])
+      if (!Number.isFinite(value) || value < 0 || value > 1) {
+        throw new InvalidOpError(`op ${index} (setMarketingMix) ${key} out of range`)
+      }
     }
   }
 
@@ -146,6 +190,15 @@ export function applyOp(state: GameState, op: GameOp): GameState {
       return setPrice(state, Number(args.price ?? state.price))
     case 'setMarketing':
       return setMarketing(state, Number(args.amount ?? 0))
+    case 'setMarketingChannel':
+      return setMarketingChannel(state, String(args.channelId ?? ''), Number(args.share ?? 0))
+    case 'setMarketingMix':
+      return setMarketingMix(state, {
+        social: args.social === undefined ? undefined : Number(args.social),
+        search: args.search === undefined ? undefined : Number(args.search),
+        content: args.content === undefined ? undefined : Number(args.content),
+        events: args.events === undefined ? undefined : Number(args.events),
+      })
     case 'setProduct':
       return setProduct(state, Number(args.amount ?? 0))
     case 'setTraining':
@@ -160,6 +213,10 @@ export function applyOp(state: GameState, op: GameOp): GameState {
       return pushDeal(state, String(args.dealId ?? ''))
     case 'openBranch':
       return openBranch(state, String(args.branchId ?? ''))
+    case 'payBill':
+      return payBill(state, String(args.billId ?? ''))
+    case 'payAllBills':
+      return payAllBills(state)
     case 'missionEvidence':
       return acknowledgeMissionEvidence(state, (args.evidence as string[]) ?? [])
     default:

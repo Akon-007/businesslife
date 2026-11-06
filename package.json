@@ -11,7 +11,7 @@
     "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify": "node scripts/verify-integrity.mjs && node scripts/verify-auth.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-determinism.ts && npx tsx scripts/verify-cash-timing.ts && node scripts/verify-contrast.mjs && npx tsx scripts/verify-statements.ts && npx tsx scripts/verify-render.tsx && npx tsx scripts/verify-replay.ts && npx tsx scripts/verify-legit-play.ts",
+    "verify": "node scripts/verify-integrity.mjs && node scripts/verify-auth.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-determinism.ts && npx tsx scripts/verify-cash-timing.ts && node scripts/verify-contrast.mjs && npx tsx scripts/verify-statements.ts && npx tsx scripts/verify-render.tsx && npx tsx scripts/verify-centres.ts && npx tsx scripts/verify-replay.ts && npx tsx scripts/verify-legit-play.ts",
     "verify:api": "node scripts/verify-integrity.mjs",
     "verify:auth": "node scripts/verify-auth.mjs",
     "verify:scoring": "npx tsx scripts/verify-scoring.ts",
@@ -20,6 +20,7 @@
     "verify:statements": "npx tsx scripts/verify-statements.ts",
     "verify:contrast": "node scripts/verify-contrast.mjs",
     "verify:render": "npx tsx scripts/verify-render.tsx",
+    "verify:centres": "npx tsx scripts/verify-centres.ts",
     "verify:replay": "npx tsx scripts/verify-replay.ts",
     "verify:legit": "npx tsx scripts/verify-legit-play.ts"
   },
