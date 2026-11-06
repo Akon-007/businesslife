@@ -192,7 +192,24 @@ export interface Company {
     currentLevel: number
     completedMissions: string[]
   }
-  simulation: { day: number; lastAdvancedAt: string; processedSchedules: string[]; scenarioSeed?: number; runSeed?: number }
+  simulation: {
+    day: number
+    lastAdvancedAt: string
+    processedSchedules: string[]
+    scenarioSeed?: number
+    runSeed?: number
+    /** Outcome of the last server-side replay of this company's decision journal. */
+    replay?: {
+      status: 'match' | 'mismatch' | 'error' | 'none'
+      checkedAt: string
+      ops: number
+      months: number
+      diffs: number
+      error?: string
+    }
+    /** Latest journal + profile, kept so instructors can re-run the replay on demand. */
+    replayInput?: { profile: Record<string, unknown>; journal: unknown[] }
+  }
   notifications: Array<Record<string, unknown>>
   popups: Array<Record<string, unknown>>
   socialPosts: SocialPost[]

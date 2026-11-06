@@ -21,6 +21,7 @@ import {
   clearSession,
   createClass,
   downloadRosterCsv,
+  fetchReplay,
   fetchRoster,
   gradeStudent,
   instructorLogin,
@@ -40,6 +41,13 @@ const INDUSTRIES = [
   { id: 'retail', label: 'Retail & e-commerce' },
   { id: 'logistics', label: 'Logistics & transport' },
 ]
+
+const REPLAY_COPY: Record<RosterEntry['replay'], { label: string; tone: string; title: string }> = {
+  match: { label: 'Replay ✓', tone: 'bg-brand-50 text-brand-700', title: 'The server re-ran this journal and reproduced the same figures.' },
+  mismatch: { label: 'Replay ✗', tone: 'bg-coral-soft text-coral', title: 'The server replay disagrees with the committed figures.' },
+  error: { label: 'Replay error', tone: 'bg-gold-soft text-[#8a5b00]', title: 'The decision journal could not be replayed.' },
+  none: { label: 'No replay', tone: 'bg-paper-3 text-ink-500', title: 'No decision journal has been committed yet.' },
+}
 
 const INTEGRITY_COPY: Record<RosterEntry['integrity'], { label: string; tone: string }> = {
   verified: { label: 'Verified', tone: 'bg-brand-50 text-brand-700' },
@@ -231,6 +239,14 @@ export default function Lecturer() {
                     const result = await resetStudent(selected.id, studentId)
                     setRoster(result.roster)
                   }, 'Run reset to scenario start.')
+                }
+                onReplay={(_studentId, companyId) =>
+                  run(async () => {
+                    const verdict = await fetchReplay(companyId, 'instructor')
+                    await refresh(selected.id)
+                    if (verdict.status === 'match') return
+                    throw new Error(verdict.error ?? `Replay returned ${verdict.status}.`)
+                  }, 'Server replay reproduced the run.')
                 }
                 onExport={() =>
                   run(async () => {
@@ -488,6 +504,7 @@ function RosterCard({
   onGrade,
   onReset,
   onExport,
+  onReplay,
 }: {
   cohort: Cohort
   roster: RosterEntry[]
@@ -495,6 +512,7 @@ function RosterCard({
   onInvite: (value: string) => void
   onGrade: (studentId: string, grade: number, rationale: string, rubric: Record<string, number>) => void
   onReset: (studentId: string) => void
+  onReplay: (studentId: string, companyId: string) => void
   onExport: () => void
 }) {
   const [invite, setInvite] = useState('')
@@ -582,6 +600,12 @@ function RosterCard({
                         {badge.label}
                       </span>
                       <p className="mt-1 text-[9.5px] text-ink-400">{number(entry.commits)} commits</p>
+                      <span
+                        title={REPLAY_COPY[entry.replay].title}
+                        className={clsx('mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-[0.05em]', REPLAY_COPY[entry.replay].tone)}
+                      >
+                        {REPLAY_COPY[entry.replay].label}
+                      </span>
                     </td>
                     <td className="px-2 py-2">
                       {entry.seed === null ? (
@@ -612,6 +636,15 @@ function RosterCard({
                           className={buttonClass('ghost', 'sm')}
                         >
                           Grade
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!entry.companyId || busy}
+                          title="Re-run this student's decision journal on the server"
+                          onClick={() => entry.companyId && onReplay(entry.studentId, entry.companyId)}
+                          className={buttonClass('ghost', 'sm')}
+                        >
+                          Replay
                         </button>
                         <button
                           type="button"

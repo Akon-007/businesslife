@@ -224,6 +224,9 @@ export function startGame(input: {
   const base: GameState = {
     version: SAVE_VERSION,
     seed,
+    journal: [],
+    journalComplete: true,
+    startingCash,
     status: 'active',
     founder: input.founder.trim() || 'Founder',
     firstName: input.firstName?.trim() || input.founder.trim().split(' ')[0] || 'Founder',
@@ -1073,13 +1076,20 @@ export function advanceMonth(state: GameState): GameState {
   return next
 }
 
+/**
+ * Advance one day. The day counter is always within the month (1..30) so it
+ * matches what the server accepts, and a pending crisis blocks the clock
+ * instead of silently rolling the month over.
+ */
 export function advanceDay(state: GameState): GameState {
-  const nextDay = (state.day ?? state.month * DAYS_PER_MONTH + 1) + 1
-  if (nextDay % DAYS_PER_MONTH === 0) {
-    const monthState = advanceMonth({ ...state, day: nextDay })
-    return { ...monthState, day: nextDay }
+  if (state.status !== 'active' || state.pendingCrisis) return state
+  const day = Math.min(Math.max(1, Math.round(state.day ?? 1)), DAYS_PER_MONTH)
+  if (day >= DAYS_PER_MONTH) {
+    const closed = advanceMonth({ ...state, day })
+    if (closed === state) return state
+    return { ...closed, day: 1 }
   }
-  return { ...state, day: nextDay }
+  return { ...state, day: day + 1 }
 }
 
 function unlock(state: GameState, achievement: string): GameState {
@@ -1474,6 +1484,9 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     ...game,
     version: SAVE_VERSION,
     seed: game.seed ?? hashSeed(game.company ?? 'businesslife', game.month ?? 0),
+    journal: game.journal ?? [],
+    journalComplete: game.journalComplete ?? ((game.journal?.length ?? 0) === 0 && (game.month ?? 0) === 0),
+    startingCash: game.startingCash ?? game.cash ?? 0,
     invoices: game.invoices ?? [],
     receivables: game.receivables ?? 0,
     authority: game.authority ?? undefined,

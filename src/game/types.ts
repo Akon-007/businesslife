@@ -281,11 +281,51 @@ export interface ServerAuthority {
   readOnly: boolean
 }
 
+export type GameOpName =
+  | 'advanceDay'
+  | 'resolveCrisis'
+  | 'hireCandidate'
+  | 'fireEmployee'
+  | 'refreshCandidates'
+  | 'offerRound'
+  | 'acceptOffer'
+  | 'declineOffers'
+  | 'takeLoan'
+  | 'repayDebt'
+  | 'setPrice'
+  | 'setMarketing'
+  | 'setProduct'
+  | 'setTraining'
+  | 'selectSupplier'
+  | 'setRestock'
+  | 'toggleDealDiscount'
+  | 'pushDeal'
+  | 'openBranch'
+  | 'missionEvidence'
+
+/**
+ * One recorded decision. The journal is append-only: replaying the seed plus
+ * this list reproduces the run exactly, which is what the server checks.
+ */
+export interface GameOp {
+  op: GameOpName
+  args?: Record<string, unknown>
+}
+
 export interface GameState {
   backendCompanyId?: string
   authority?: ServerAuthority
   /** Seed for the deterministic engine. Same seed + same decisions = same run. */
   seed: number
+  /** Append-only record of the decisions that produced this state. */
+  journal: GameOp[]
+  /**
+   * False for runs that were already in progress before the journal existed:
+   * their journal starts mid-run, so the server cannot replay them from zero.
+   */
+  journalComplete?: boolean
+  /** Cash the run actually began with (scenario starting capital or derived). */
+  startingCash: number
   version: number
   status: GameStatus
   endedReason?: string

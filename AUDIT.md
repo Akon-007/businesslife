@@ -297,7 +297,7 @@ plus determinism and cash-timing suites, and CI wiring.)_
 
 | Priority | Item | Status after §9.6 |
 |---|---|---|
-| 1 | Simulation execution moved fully server-side (replay, multiplayer prerequisite) | open — unchanged; see the honest boundary in §9.6 |
+| 1 | Simulation execution moved fully server-side (replay, multiplayer prerequisite) | **implemented (server-side replay)** — the API re-executes seed + decision journal; see §9.7 |
 | 2 | Seeded PRNG, scenario versioning, snapshots | **implemented** — deterministic engine, replay restart, cohort scenario seed |
 | 3 | Real authentication (password verification, recovery, SSO) | **implemented (accounts)** — scrypt, sessions, revocation, throttling; recovery and SSO still open |
 | 4 | Invoices, receivables/payables, three financial statements | **partial** — invoice lifecycle + receivables ledger + cash timing done; payables and full statements still open |
@@ -332,7 +332,31 @@ matrix (spread 33–45, 0% saturation) · `verify:determinism` (24-month replay 
   server-side `advanceMonth` remains the prerequisite for true replay and multiplayer (item 1).
 - Payables, a balance sheet/cash-flow statement, and multi-currency remain out of scope for this pass.
 
-Updated MVP acceptance (§16.2): **7 pass · 6 partial · 0 fail**. The former outright failure —
-"invoices and payment schedules affect cash at the correct time" — now passes; the remaining
-partials are server-side execution, multi-currency statements, and the academic-integration items
-that depend on them.
+Updated MVP acceptance (§16.2): **7 pass · 6 partial · 0 fail**, superseded by §9.7
+(**8 pass · 5 partial · 0 fail**).
+
+### 9.7 Server-side execution and replay — **implemented**
+
+| Before | After |
+|---|---|
+| The server validated numbers the browser produced; nothing re-ran the simulation | The engine is bundled for the API (`backend-dist/engine.mjs` from `src/game`), so both sides execute identical code |
+| A commit was a snapshot with no provenance | Each action is journaled (`src/game/ops.ts`); commits carry the seed, starting profile and journal |
+| The client's figures were the input to validation | The server re-runs `startGame` + `applyJournal`, adopts its own cash/revenue/valuation/score, and only then applies the plausibility bounds |
+| Tampering was caught only by bounds | A replay that disagrees adds a `replay_mismatch` violation and flags the commit; unknown ops, out-of-range args and journals over 5,000 ops are refused |
+| Instructors could not re-run a student's history | **Replay** in the roster re-executes the stored journal on demand and writes `replay_verified` to the student's audit chain; CSV carries the `replay` verdict |
+
+Verification: `verify:replay` (22 assertions) plays six months through the op layer, commits each
+month, and checks accepted status, replay match, score parity, cash parity, zero false violations,
+demand re-verification, forged-commit rejection, unknown-op rejection and journal-size limits.
+`verify:api` grew to 74 assertions. All suites green; build and lint clean.
+
+**Defect found and fixed while building this:** `advanceDay` accumulated a global day counter
+(`day` reached 61, 91, …) while the authority requires a day within the month, and a pending crisis
+did not stop the clock — so honest monthly commits were being flagged `day_out_of_range`. The day
+now stays in 1..30, a pending crisis blocks the clock, and month progression is exactly 30 days.
+
+**Honest boundary:** the *decisions* are still supplied by the client; the server computes the
+outcome. A determined client can invent a different history that replays consistently (within
+plausibility bounds) — it cannot invent outcomes that the engine would not produce. Truly
+adversarial-proof execution requires the server to own the input channel too (server-issued
+decisions, no client-side state), which is the remaining step for multiplayer.

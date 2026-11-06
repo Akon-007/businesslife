@@ -173,6 +173,15 @@ async function main() {
   check('CSV carries engine score and grade', csvLines[1]?.includes('78'), csvLines[1])
   check('CSV header includes the scenario seed', csvLines[0]?.split(',').includes('scenario_seed'), csvLines[0])
   check('CSV row carries the scenario seed', csvLines[1]?.includes('424242'), csvLines[1])
+  check('CSV exports the replay verdict column', csvLines[0]?.split(',').includes('replay'), csvLines[0])
+
+  console.log('\nServer-side replay surface')
+  const runState = await call(`/api/companies/${companyId}/run`, { token: learner.token })
+  check('run state exposes the replay verdict', ['none', 'match', 'mismatch', 'error'].includes(runState.body?.replay?.status), String(runState.body?.replay?.status))
+  const noJournalReplay = await call(`/api/companies/${companyId}/replay`, { token: learner.token })
+  check('replay endpoint answers for the owner', noJournalReplay.status === 200, `status ${noJournalReplay.status}`)
+  const rosterReplay = await call(`/api/classes/${classId}/roster`, { token: instructor.token })
+  check('roster exposes the replay verdict', ['none', 'match', 'mismatch', 'error'].includes(rosterReplay.body?.roster?.[0]?.replay), String(rosterReplay.body?.roster?.[0]?.replay))
 
   console.log('\nCompetency rubric')
   const rubricSpec = await call('/api/rubric')

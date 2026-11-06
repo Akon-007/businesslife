@@ -28,6 +28,8 @@ export interface RosterEntry {
   rationale: string | null
   /** Engine score when the grade was recorded, for a documented delta. */
   engineScoreAtGrade: number | null
+  /** Server-side replay verdict for this student's latest commit. */
+  replay: 'match' | 'mismatch' | 'error' | 'none'
 }
 
 export function recordFor(classroom: ClassRoom, studentId: string): ClassroomRecord {
@@ -70,6 +72,7 @@ export function rosterFor(database: Database, classroom: ClassRoom): RosterEntry
         rubric: null,
         rationale: null,
         engineScoreAtGrade: null,
+        replay: 'none' as const,
       }
     }
     const authority = authorityOf(company)
@@ -98,6 +101,7 @@ export function rosterFor(database: Database, classroom: ClassRoom): RosterEntry
       rubric: record?.rubric ?? null,
       rationale: record?.rationale ?? null,
       engineScoreAtGrade: record?.engineScoreAtGrade ?? null,
+      replay: company.simulation.replay?.status ?? 'none',
     }
   })
 }
@@ -121,7 +125,7 @@ export function csvEscape(value: unknown): string {
 }
 
 export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string {
-  const header = ['cohort', 'scenario', 'scenario_seed', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'grade_minus_engine', 'rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'seed_match', 'feedback', 'last_commit']
+  const header = ['cohort', 'scenario', 'scenario_seed', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'grade_minus_engine', 'rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'replay', 'seed_match', 'feedback', 'last_commit']
   const scenario = classroom.scenario ? String((classroom.scenario as { title?: string }).title ?? 'custom') : 'none'
   const scenarioSeed = classroom.scenario ? String((classroom.scenario as { seed?: number }).seed ?? '') : ''
   const rows = entries.map((entry) => [
@@ -146,6 +150,7 @@ export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string 
     entry.status,
     entry.commits,
     entry.integrity,
+    entry.replay,
     entry.seedMatch === null ? '' : entry.seedMatch ? 'yes' : 'no',
     entry.feedback ?? '',
     entry.updatedAt ?? '',

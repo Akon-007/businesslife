@@ -23,6 +23,7 @@ npm run verify:auth     # registration, sign-in, session revocation, throttling,
 npm run verify:scoring  # client score == server score across industries/strategies/months
 npm run verify:determinism  # same seed + same decisions = identical run
 npm run verify:cash     # invoices move cash when they fall due, not when the sale is booked
+npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run build           # production build
 npm run lint            # oxlint
@@ -40,6 +41,8 @@ GitHub Actions runs the same suite on every push and pull request
 | AI gateway, characters, guardrails, grounding | `backend/ai.ts` |
 | Cohorts, roster, CSV export | `backend/classroom.ts`, `routes` in `backend/server.ts` |
 | Seeded randomness (one source of truth) | `src/game/random.ts` |
+| Decision journal (`applyOp`) and replay projection | `src/game/ops.ts` |
+| Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |
 | Accounts, sessions, password hashing | `backend/auth.ts` |
 | Grading rubric and rationale rules | `backend/rubric.ts` (client mirror: `src/game/rubric.ts`) |
 | Instructor portal | `src/pages/Lecturer.tsx` |
@@ -54,6 +57,25 @@ corrected to the canonical value where it fails, and recorded in a SHA-256 hash 
 (`GET /api/companies/:id/audit`). A hand-edited browser save therefore cannot produce a forged
 balance or a forged score — it produces a `flagged` commit and a corrected figure. Scores are
 always recomputed server-side; the client's number is never trusted.
+
+### Server-side execution
+
+The simulation code is bundled for the API (`npm run build:engine` → `backend-dist/engine.mjs`,
+built from `src/game`), so there is exactly one engine. Every state-changing player action is
+recorded in an append-only journal (`src/game/ops.ts`: `advanceDay`, `setPrice`, `hireCandidate`,
+`resolveCrisis`, …), and each monthly commit sends the seed, the starting profile and that journal.
+The server re-runs `startGame` + the journal itself and:
+
+- adopts **its own** figures and score, ignoring the client's reported numbers;
+- compares them with the claim and records `replay: match | mismatch | error` on the company;
+- adds a `replay_mismatch` violation (and flags the commit) when they disagree;
+- refuses unknown operation types, out-of-range arguments and journals over 5,000 operations;
+- stores the journal so an instructor can press **Replay** in the roster to re-verify at any time —
+  that check is itself written to the student's audit chain.
+
+A forged balance therefore has to be accompanied by a fabricated, self-consistent decision history
+that replays to the same numbers under the same bounds — which is the point: decisions, not numbers,
+are the input.
 
 ### Reproducible runs
 

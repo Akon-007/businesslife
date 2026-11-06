@@ -196,6 +196,23 @@ export interface AuditResponse {
   violations: AuthorityViolationView[]
 }
 
+export interface ReplayVerdict {
+  status: 'match' | 'mismatch' | 'error' | 'none'
+  ok?: boolean
+  error?: string | null
+  ops: number
+  months: number
+  score?: number
+  authorityScore?: number
+  message?: string
+  replay?: { status: string; checkedAt: string; ops: number; months: number; diffs: number; error?: string } | null
+}
+
+/** Ask the server to re-execute this company from its seed and decision journal. */
+export function fetchReplay(companyId: string, scope: 'learner' | 'instructor' = 'learner'): Promise<ReplayVerdict> {
+  return request<ReplayVerdict>(`/api/companies/${companyId}/replay`, { scope })
+}
+
 export function fetchAudit(companyId: string): Promise<AuditResponse> {
   return request<AuditResponse>(`/api/companies/${companyId}/audit`)
 }
@@ -249,6 +266,7 @@ export interface RosterEntry {
   rubric: Record<string, number> | null
   rationale: string | null
   engineScoreAtGrade: number | null
+  replay: 'match' | 'mismatch' | 'error' | 'none'
 }
 
 export interface RubricCriterion {

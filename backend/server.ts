@@ -14,6 +14,7 @@ import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthori
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
 import { recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
 import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
+import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
 import type { Company, Database, Player } from './types.js'
 
@@ -351,6 +352,8 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       company.simulation.day = start.day
       company.simulation.scenarioSeed = start.seed ?? company.simulation.scenarioSeed
       company.simulation.runSeed = start.seed ?? undefined
+      company.simulation.replayInput = undefined
+      company.simulation.replay = { status: 'none', checkedAt: now(), ops: 0, months: 0, diffs: 0 }
       recordFor(classroom, studentId).resetAt = now()
       appendAudit(company, 'cohort_run_reset', player.id, { cohortId: classroom.id, startingCashKobo: company.authority.cashKobo })
       company.notifications.unshift({ id: newId('note'), type: 'run_reset', priority: 'critical', message: 'Your instructor reset the scenario to its starting conditions.', createdAt: now() })
@@ -430,18 +433,81 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         integrity: verifyChain(company),
         violations: (company.authorityViolations ?? []).slice(0, 10),
         readOnly: company.playerId !== player.id,
+        replay: company.simulation.replay ?? { status: 'none' as const, checkedAt: '', ops: 0, months: 0, diffs: 0 },
       }); return
     }
     if (request.method === 'PUT') {
       if (company.playerId !== player.id) { error(response, 403, 'Only the company owner can commit a run.'); return }
-      const input = await body(request) as Partial<RunSnapshot>
+      const input = await body(request) as Partial<RunSnapshot> & { replay?: ReplayInput }
       const runSeed = Number(input.seed)
       if (Number.isFinite(runSeed) && runSeed > 0) company.simulation.runSeed = Math.round(runSeed)
+
+      // If the client sent its decision journal, re-execute the run here and
+      // trust only what the server's own engine produces.
+      let verdict: ReplayVerdict | null = null
+      if (input.replay && Array.isArray(input.replay.journal) && input.replay.journal.length) {
+        verdict = await runReplay(
+          { profile: { ...input.replay.profile, seed: Number(input.replay.profile?.seed ?? company.simulation.runSeed ?? 0) }, journal: input.replay.journal },
+          projectionFromSnapshot(input),
+          MAX_REPLAY_OPS,
+        )
+        company.simulation.replay = {
+          status: verdict.status,
+          checkedAt: now(),
+          ops: verdict.ops,
+          months: verdict.months,
+          diffs: verdict.diffs.length,
+          error: verdict.error,
+        }
+        if (verdict.ok) {
+          company.simulation.replayInput = {
+            profile: { ...input.replay.profile, seed: Number(input.replay.profile?.seed ?? company.simulation.runSeed ?? 0) },
+            journal: input.replay.journal.slice(0, MAX_REPLAY_OPS),
+          }
+          // The server's execution wins: validate and score the replayed values.
+          Object.assign(input, verdict.snapshot ?? {})
+        } else {
+          verdict.status = 'error'
+        }
+      }
+
       const result = validateSnapshot(company, input)
+      if (verdict?.ok) {
+        // Use the score the server's own execution produced rather than
+        // re-deriving it from bounded canonical values.
+        result.score = verdict.score
+        result.authority.score = verdict.score
+      }
+      if (verdict && verdict.status !== 'match') {
+        const first = verdict.diffs[0]
+        result.violations = [
+          {
+            code: verdict.status === 'error' ? 'replay_failed' : 'replay_mismatch',
+            field: first?.field ?? 'journal',
+            message:
+              verdict.status === 'error'
+                ? `Server replay could not complete: ${verdict.error ?? 'invalid journal'}`
+                : `Server replay disagrees with the committed figures (${verdict.diffs.map((diff) => diff.field).join(', ')}).`,
+            clientValue: first?.client ?? null,
+            canonicalValue: first?.replay ?? null,
+            at: now(),
+          },
+          ...result.violations,
+        ]
+        result.tampered = true
+      }
       company.authority = result.authority
       if (result.violations.length) company.authorityViolations = [...result.violations, ...(company.authorityViolations ?? [])].slice(0, 20)
       applyCanonical(company, result.canonical)
-      appendAudit(company, 'run_commit', player.id, { month: result.canonical.month, score: result.score, tampered: result.tampered, violations: result.violations.map((item) => item.code), seed: company.simulation.runSeed ?? null })
+      appendAudit(company, 'run_commit', player.id, {
+        month: result.canonical.month,
+        score: result.score,
+        tampered: result.tampered,
+        violations: result.violations.map((item) => item.code),
+        seed: company.simulation.runSeed ?? null,
+        replay: company.simulation.replay?.status ?? 'none',
+        replayOps: company.simulation.replay?.ops ?? 0,
+      })
       await saveDatabase(database)
       send(response, 200, {
         accepted: !result.tampered,
@@ -453,9 +519,48 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         integrity: verifyChain(company),
         seed: company.simulation.runSeed ?? null,
         scenarioSeed: company.simulation.scenarioSeed ?? null,
+        replay: company.simulation.replay ?? { status: 'none' as const, checkedAt: '', ops: 0, months: 0, diffs: 0 },
       }); return
     }
     error(response, 405, 'Use GET or PUT on a company run.'); return
+  }
+  const replayMatch = path.match(/^\/api\/companies\/([^/]+)\/replay$/)
+  if (replayMatch) {
+    if (request.method !== 'GET') { error(response, 405, 'Use GET on a company replay.'); return }
+    const company = ownedCompany(database, player, replayMatch[1]) ?? taughtCompany(database, player, replayMatch[1])
+    if (!company) { error(response, 404, 'Company not found.'); return }
+    const stored = company.simulation.replayInput
+    if (!stored) {
+      send(response, 200, { status: 'none', message: 'No decision journal has been committed for this company yet.', replay: company.simulation.replay ?? null }); return
+    }
+    const verdict = await runReplay({ profile: stored.profile, journal: stored.journal }, undefined, MAX_REPLAY_OPS)
+    company.simulation.replay = {
+      status: verdict.status,
+      checkedAt: now(),
+      ops: verdict.ops,
+      months: verdict.months,
+      diffs: verdict.diffs.length,
+      error: verdict.error,
+    }
+    appendAudit(company, 'replay_verified', player.id, {
+      status: verdict.status,
+      ops: verdict.ops,
+      months: verdict.months,
+      score: verdict.score,
+      error: verdict.error ?? null,
+    })
+    await saveDatabase(database)
+    send(response, 200, {
+      status: verdict.status,
+      ok: verdict.ok,
+      error: verdict.error ?? null,
+      ops: verdict.ops,
+      months: verdict.months,
+      score: verdict.score,
+      projection: verdict.projection,
+      authorityScore: authorityOf(company).score,
+      replay: company.simulation.replay,
+    }); return
   }
   const auditMatch = path.match(/^\/api\/companies\/([^/]+)\/audit$/)
   if (request.method === 'GET' && auditMatch) {

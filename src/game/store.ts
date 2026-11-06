@@ -1,32 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
-  acceptOffer,
-  advanceDay,
   authorityPayload,
-  acknowledgeMissionEvidence,
-  declineOffers,
-  fireEmployee,
-  hireCandidate,
   normalizeGame,
-  offerRound,
-  openBranch,
-  pushDeal,
-  refreshCandidates,
-  repayDebt,
-  resolveCrisis,
-  selectSupplier,
-  setMarketing,
-  setPrice,
-  setProduct,
-  setRestock,
-  setTraining,
   startGame,
-  takeLoan,
-  toggleDealDiscount,
 } from './engine'
-import type { DifficultyId, FounderBackgroundId, GameState, IndustryId, StrategyId } from './types'
+import type { DifficultyId, FounderBackgroundId, GameOp, GameState, IndustryId, StrategyId } from './types'
 import { money, uid } from '../lib/format'
+import { applyOp } from './ops'
 import { commitRun, createRemoteCompany, fetchRun, syncCompanyAction, syncFundingAction, syncMission } from '../lib/api'
 
 type Toast = { id: string; message: string; tone: 'good' | 'bad' | 'neutral' }
@@ -96,6 +77,16 @@ interface GameStore {
 
 const archive = (game: GameState): ArchivedRun => ({ id: uid(), savedAt: Date.now(), game })
 
+/**
+ * Apply a decision and record it. Every mutating store action goes through
+ * here, which is what makes the run replayable on the server.
+ */
+const withOp = (game: GameState, op: GameOp): GameState => {
+  const next = applyOp(game, op)
+  if (next === game) return game
+  return { ...next, journal: [...(game.journal ?? []), op] }
+}
+
 export const useGame = create<GameStore>()(
   persist(
     (set, get) => ({
@@ -152,7 +143,7 @@ export const useGame = create<GameStore>()(
           return
         }
         if (game.status !== 'active') return
-        const next = advanceDay(game)
+        const next = withOp(game, { op: 'advanceDay' })
         set({ game: next })
         void syncCompanyAction(game.backendCompanyId, 'time/advance', { days: 1 }).catch(() => undefined)
         if (next.month !== game.month) get().syncRun()
@@ -163,7 +154,7 @@ export const useGame = create<GameStore>()(
       recordEvidence: (evidence) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        const next = acknowledgeMissionEvidence(game, evidence)
+        const next = withOp(game, { op: 'missionEvidence', args: { evidence } })
         if (next === game) return
         const before = new Set(game.beginner.levels.flatMap((level) => level.missions.filter((mission) => mission.status === 'completed').map((mission) => mission.missionId)))
         const newlyCompleted = next.beginner.levels.flatMap((level) => level.missions.filter((mission) => mission.status === 'completed' && !before.has(mission.missionId)).map((mission) => mission.missionId))
@@ -175,7 +166,29 @@ export const useGame = create<GameStore>()(
         const { game } = get()
         if (!game?.backendCompanyId) return
         const companyId = game.backendCompanyId
-        void commitRun(companyId, { ...authorityPayload(game), seed: game.seed })
+        const replayable = game.journalComplete !== false
+        void commitRun(companyId, {
+          ...authorityPayload(game),
+          seed: game.seed,
+          replay: replayable ? {
+            profile: {
+              founder: game.founder,
+              firstName: game.firstName,
+              lastName: game.lastName,
+              nickname: game.nickname,
+              avatar: game.avatar,
+              accountEmail: game.accountEmail,
+              company: game.company,
+              industry: game.industry,
+              strategy: game.strategy,
+              founderBackground: game.founderBackground,
+              difficulty: game.difficulty,
+              startingCash: game.startingCash,
+              seed: game.seed,
+            },
+            journal: game.journal ?? [],
+          } : undefined,
+        })
           .then((result) => {
             set((state) => {
               if (!state.game) return state
@@ -226,6 +239,7 @@ export const useGame = create<GameStore>()(
           founderBackground: game.founderBackground,
           difficulty: game.difficulty,
           seed: game.seed,
+          startingCash: game.startingCash,
         })
         set({
           game: { ...next, backendCompanyId: game.backendCompanyId },
@@ -244,6 +258,13 @@ export const useGame = create<GameStore>()(
             return
           }
           const serverCash = run.canonical.cashKobo / 100
+          if (run.canonical.month < game.month) {
+            // The instructor reset this run on the server. Restart locally on the
+            // same seed so the decision journal matches the authority again.
+            get().restartScenario()
+            get().notify('Your instructor reset this run. Restarting from the scenario seed.', 'neutral')
+            return
+          }
           const drifted = Math.abs(serverCash - game.cash) > Math.max(1, serverCash * 0.02)
           set((state) => {
             if (!state.game) return state
@@ -277,7 +298,7 @@ export const useGame = create<GameStore>()(
       resolve: (optionId) => {
         const { game } = get()
         if (!game) return
-        set({ game: resolveCrisis(game, optionId) })
+        set({ game: withOp(game, { op: 'resolveCrisis', args: { optionId } }) })
       },
       hire: (candidateId) => {
         const { game } = get()
@@ -288,7 +309,7 @@ export const useGame = create<GameStore>()(
           get().notify('You need the signing bonus plus one month of salary in cash.', 'bad')
           return
         }
-        set({ game: hireCandidate(game, candidateId) })
+        set({ game: withOp(game, { op: 'hireCandidate', args: { candidateId } }) })
         get().recordEvidence(['beginner-7-2', 'beginner-7-3'])
         void syncCompanyAction(game.backendCompanyId, 'job-openings', { name: candidate.name, role: candidate.role, salaryKobo: Math.round(candidate.salary * 100) }, `hire-${candidateId}-${game.month}`).catch(() => undefined)
         get().notify(`${candidate.name} joined the team.`, 'good')
@@ -302,7 +323,7 @@ export const useGame = create<GameStore>()(
           get().notify('You need one month of severance available in cash.', 'bad')
           return
         }
-        set({ game: fireEmployee(game, employeeId) })
+        set({ game: withOp(game, { op: 'fireEmployee', args: { employeeId } }) })
         void syncCompanyAction(game.backendCompanyId, 'budget', { type: 'employee_terminated', employeeId, severanceKobo: Math.round(member.salary * 100) }, `fire-${employeeId}-${game.month}`).catch(() => undefined)
         get().notify(`${member.name} left the team.`, 'neutral')
       },
@@ -313,7 +334,7 @@ export const useGame = create<GameStore>()(
           get().notify(`Refreshing the candidate pool costs ${money(500)}.`, 'bad')
           return
         }
-        set({ game: refreshCandidates(game) })
+        set({ game: withOp(game, { op: 'refreshCandidates' }) })
       },
       openRound: () => {
         const { game } = get()
@@ -326,14 +347,14 @@ export const useGame = create<GameStore>()(
           get().notify('Give it another quarter before opening a new round.', 'bad')
           return
         }
-        set({ game: offerRound(game) })
+        set({ game: withOp(game, { op: 'offerRound' }) })
         get().recordEvidence(['beginner-9-1', 'beginner-9-2', 'beginner-9-3', 'beginner-10-1'])
       },
       accept: (offerId) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
         const offer = game.offers.find((item) => item.id === offerId)
-        set({ game: acceptOffer(game, offerId) })
+        set({ game: withOp(game, { op: 'acceptOffer', args: { offerId } }) })
         get().recordEvidence(['beginner-12-1', 'beginner-12-2', 'beginner-12-3'])
         if (offer) void syncFundingAction(game.backendCompanyId, offerId, offer.amount, offer.equity).catch(() => undefined)
         if (offer) get().notify(`Term sheet signed with ${offer.fund}.`, 'good')
@@ -341,12 +362,12 @@ export const useGame = create<GameStore>()(
       decline: () => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: declineOffers(game) })
+        set({ game: withOp(game, { op: 'declineOffers' }) })
       },
       loan: (amount) => {
         const { game } = get()
         if (!game || game.status !== 'active' || amount <= 0) return
-        set({ game: takeLoan(game, amount) })
+        set({ game: withOp(game, { op: 'takeLoan', args: { amount } }) })
         get().recordEvidence(['beginner-8-2', 'beginner-8-3'])
         void syncCompanyAction(game.backendCompanyId, 'finance/loan', { amount: Math.round(amount) }, `loan-${game.month}-${amount}`).catch(() => undefined)
         get().notify('Loan approved. Interest starts next month.', 'neutral')
@@ -354,40 +375,40 @@ export const useGame = create<GameStore>()(
       repay: (amount) => {
         const { game } = get()
         if (!game || game.status !== 'active' || amount <= 0) return
-        set({ game: repayDebt(game, amount) })
+        set({ game: withOp(game, { op: 'repayDebt', args: { amount } }) })
         get().recordEvidence(['beginner-12-2'])
         void syncCompanyAction(game.backendCompanyId, 'finance/repay', { amount: Math.round(amount) }, `repay-${game.month}-${amount}`).catch(() => undefined)
       },
       updatePrice: (price) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: setPrice(game, price) })
+        set({ game: withOp(game, { op: 'setPrice', args: { price } }) })
         get().recordEvidence(['beginner-2-5', 'beginner-3-3'])
       },
       updateMarketing: (amount) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: setMarketing(game, amount) })
+        set({ game: withOp(game, { op: 'setMarketing', args: { amount } }) })
         get().recordEvidence(['beginner-13-3'])
         void syncCompanyAction(game.backendCompanyId, 'budget', { budget: 'marketing', amount: Math.round(amount) }, `marketing-budget-${game.month}`).catch(() => undefined)
       },
       updateProduct: (amount) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: setProduct(game, amount) })
+        set({ game: withOp(game, { op: 'setProduct', args: { amount } }) })
         get().recordEvidence(['beginner-3-1', 'beginner-13-1'])
         void syncCompanyAction(game.backendCompanyId, 'budget', { budget: 'product', amount: Math.round(amount) }, `product-budget-${game.month}`).catch(() => undefined)
       },
       updateTraining: (amount) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: setTraining(game, amount) })
+        set({ game: withOp(game, { op: 'setTraining', args: { amount } }) })
         void syncCompanyAction(game.backendCompanyId, 'budget', { budget: 'training', amount: Math.round(amount) }, `training-budget-${game.month}`).catch(() => undefined)
       },
       chooseSupplier: (supplierId) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: selectSupplier(game, supplierId) })
+        set({ game: withOp(game, { op: 'selectSupplier', args: { supplierId } }) })
         get().recordEvidence(['beginner-3-4', 'beginner-13-4'])
         void syncCompanyAction(game.backendCompanyId, 'supplier-selection', { supplierId }, `supplier-${game.month}`).catch(() => undefined)
         const supplier = game.suppliers.find((item) => item.id === supplierId)
@@ -396,13 +417,13 @@ export const useGame = create<GameStore>()(
       updateRestock: (months) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: setRestock(game, months) })
+        set({ game: withOp(game, { op: 'setRestock', args: { months } }) })
         void syncCompanyAction(game.backendCompanyId, 'budget', { budget: 'restock', months }, `restock-${game.month}`).catch(() => undefined)
       },
       toggleDealDiscount: (dealId) => {
         const { game } = get()
         if (!game || game.status !== 'active') return
-        set({ game: toggleDealDiscount(game, dealId) })
+        set({ game: withOp(game, { op: 'toggleDealDiscount', args: { dealId } }) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, discount: !game.pipeline.find((deal) => deal.id === dealId)?.discount }, `deal-discount-${dealId}-${game.month}`).catch(() => undefined)
       },
       pushDeal: (dealId) => {
@@ -412,7 +433,7 @@ export const useGame = create<GameStore>()(
           get().notify(`Pushing a deal costs ${money(1_200)} in cash.`, 'bad')
           return
         }
-        set({ game: pushDeal(game, dealId) })
+        set({ game: withOp(game, { op: 'pushDeal', args: { dealId } }) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, action: 'push', cost: 1200 }, `deal-push-${dealId}`).catch(() => undefined)
         get().notify(`You spent ${money(1_200)} pushing the deal forward.`, 'neutral')
       },
@@ -429,7 +450,7 @@ export const useGame = create<GameStore>()(
           get().notify(`You need ${money(branch.launchCost)} in cash to launch.`, 'bad')
           return
         }
-        set({ game: openBranch(game, branchId) })
+        set({ game: withOp(game, { op: 'openBranch', args: { branchId } }) })
         void syncCompanyAction(game.backendCompanyId, 'branches', { branchId, name: branch.name, launchCost: branch.launchCost }, `branch-${branchId}`).catch(() => undefined)
         get().notify(`${branch.name} is open.`, 'good')
       },
