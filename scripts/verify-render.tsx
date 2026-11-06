@@ -46,6 +46,7 @@ async function main() {
   const { FinancePanel } = await import('../src/components/game/FinancePanel')
   const { ReportModal } = await import('../src/components/game/modals')
   const { MarketingPanel } = await import('../src/components/game/MarketingPanel')
+  const { CharacterDialogue } = await import('../src/components/game/CharacterDialogue')
   const { advanceMonth, resolveCrisis, startGame } = await import('../src/game/engine')
   const { money } = await import('../src/lib/format')
 
@@ -102,6 +103,19 @@ for (const industry of ['saas', 'retail'] as const) {
     check(`${industry}: marketing shows the mix controls`, ['Social & creators', 'Search & intent', 'Content & SEO', 'Events & B2B'].every((label) => marketingText.includes(label)))
     check(`${industry}: marketing shows attribution and unit economics`, marketingText.includes('Attribution') && marketingText.includes('LTV : CAC'))
     check(`${industry}: marketing has no leaked values`, !/NaN|undefined|\[object Object\]/.test(marketingMarkup))
+  }
+
+  let dialogueMarkup = ''
+  let dialogueError: unknown = null
+  try {
+    dialogueMarkup = renderToStaticMarkup(<CharacterDialogue game={game} />)
+  } catch (caught) {
+    dialogueError = caught
+  }
+  check(`${industry}: character dialogue renders`, !dialogueError, dialogueError instanceof Error ? dialogueError.message : String(dialogueError))
+  if (!dialogueError) {
+    check(`${industry}: dialogue states the guardrails`, dialogueMarkup.includes('No tools, no state changes'))
+    check(`${industry}: dialogue has no leaked values`, !/NaN|undefined|\[object Object\]/.test(dialogueMarkup))
   }
 
   const report = game.lastReport

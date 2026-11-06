@@ -60,6 +60,7 @@ import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
 import { FinancePanel } from './FinancePanel'
 import { MarketingPanel } from './MarketingPanel'
+import { CharacterDialogue } from './CharacterDialogue'
 import { useDialogFocus } from '../ui/useDialogFocus'
 
 export type PanelId =
@@ -1717,6 +1718,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
       </section>
 
       <AskNova game={game} />
+
+      <CharacterDialogue game={game} />
 
       <PanelSection title="The numbers Nova used">
         <div className="grid grid-cols-2 gap-2">

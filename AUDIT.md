@@ -488,3 +488,24 @@ render 30 · centres 33 · replay 22 · legit play.
 objective/audience/creative/duration, no promotions or bundles, and no elasticity curve to study. Attribution is
 the stated 70/30 rule, not multi-touch. Payment runs settle whole bills; there is no partial payment, credit-note
 or early-payment discount negotiation.
+
+
+### 9.13 Wiring gate and character dialogue — **implemented**
+
+The API is a hand-written `node:http` router, so nothing at build time proved that a path the browser calls
+still exists. That is now a gate.
+
+| Before | After |
+|---|---|
+| Renaming a route could silently break a screen until someone clicked it | `scripts/verify-wiring.mjs` parses the client's `request()` / `fetch()` calls and the server's literal routes, regex matchers and `/:id/<action>` sub-actions, then fails on any client path with no server route. Wired into `npm run verify` |
+| "Built but not wired" was an opinion | The script also prints every server route with no client caller — 13 today — and `docs/wiring.md` explains each one |
+| The dialogue endpoint existed but nothing called it | `talkToCharacter` was dead client code; the Nova panel now carries a **stakeholder dialogue** section: the character roster comes from `GET /ai/characters`, messages go to `POST /ai/dialogue`, rate limits and guardrail blocks are surfaced, and the panel states that characters cannot change state |
+
+Payment runs and the marketing mix deliberately add **no** routes: they are journal ops carried inside the
+`PUT /companies/:id/run` commit, so the server re-executes them like any other decision.
+
+`docs/wiring.md` carries the full matrix (feature → client entry point → route → which suite proves it) plus
+the honest gaps: the marketplace, admin console, `forecast`, `operations/overview`, `notifications` and
+`npcs` surfaces are server-side only.
+
+Verification: `verify:wiring` (23 client calls, 0 unwired) · render test now covers the dialogue panel.
