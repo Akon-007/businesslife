@@ -62,6 +62,10 @@ interface GameStore {
   toggleDealDiscount: (dealId: string) => void
   pushDeal: (dealId: string) => void
   openBranch: (branchId: string) => void
+  setChannelShare: (channelId: string, share: number) => void
+  setMixPreset: (mix: Record<string, number>) => void
+  payBill: (billId: string) => void
+  payAllBills: () => void
   loadRun: (runId: string) => void
   deleteRun: (runId: string) => void
   archiveCurrent: () => void
@@ -436,6 +440,46 @@ export const useGame = create<GameStore>()(
         set({ game: withOp(game, { op: 'pushDeal', args: { dealId } }) })
         void syncCompanyAction(game.backendCompanyId, 'sales/pipeline', { dealId, action: 'push', cost: 1200 }, `deal-push-${dealId}`).catch(() => undefined)
         get().notify(`You spent ${money(1_200)} pushing the deal forward.`, 'neutral')
+      },
+      setChannelShare: (channelId, share) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const current = game.marketingMix?.[channelId as keyof typeof game.marketingMix] ?? 0
+        if (Math.abs(current - share) < 0.005) return
+        set({ game: withOp(game, { op: 'setMarketingChannel', args: { channelId, share } }) })
+      },
+      setMixPreset: (mix) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        set({ game: withOp(game, { op: 'setMarketingMix', args: mix }) })
+      },
+      payBill: (billId) => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const bill = (game.bills ?? []).find((item) => item.id === billId)
+        if (!bill || bill.status === 'paid') return
+        if (game.cash < bill.amount) {
+          get().notify(`That bill needs ${money(bill.amount)}; cash on hand is ${money(game.cash)}.`, 'bad')
+          return
+        }
+        set({ game: withOp(game, { op: 'payBill', args: { billId } }) })
+        get().notify(`${money(bill.amount)} paid to ${bill.vendor}.`, 'good')
+      },
+      payAllBills: () => {
+        const { game } = get()
+        if (!game || game.status !== 'active') return
+        const open = (game.bills ?? []).filter((bill) => bill.status !== 'paid')
+        const total = open.reduce((sum, bill) => sum + bill.amount, 0)
+        if (!open.length) {
+          get().notify('No supplier bills outstanding.', 'neutral')
+          return
+        }
+        if (game.cash < Math.min(...open.map((bill) => bill.amount))) {
+          get().notify(`Cash on hand is ${money(game.cash)} — not enough for the oldest bill (${money(Math.min(...open.map((bill) => bill.amount)))}).`, 'bad')
+          return
+        }
+        set({ game: withOp(game, { op: 'payAllBills', args: {} }) })
+        get().notify(`Payment run sent: ${money(Math.min(total, game.cash))} against ${open.length} open bill${open.length === 1 ? '' : 's'}.`, 'good')
       },
       openBranch: (branchId) => {
         const { game } = get()

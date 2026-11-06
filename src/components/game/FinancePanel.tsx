@@ -117,6 +117,8 @@ function MonthPicker({ month, onChange, max }: { month: number; onChange: (next:
 
 export function FinancePanel({ game: injected, initialTab = 'pl' }: { game?: GameState; initialTab?: TabId } = {}) {
   const stored = useGame((state) => state.game) as GameState | null
+  const payBill = useGame((state) => state.payBill)
+  const payAllBills = useGame((state) => state.payAllBills)
   const [tab, setTab] = useState<TabId>(initialTab)
   const [pickedMonth, setPickedMonth] = useState<number | null>(null)
 
@@ -354,9 +356,31 @@ export function FinancePanel({ game: injected, initialTab = 'pl' }: { game?: Gam
         >
           <div id="finance-panel-bills" role="tabpanel" aria-labelledby="finance-tab-bills">
             <div className="mb-3 rounded-xl bg-gold-soft/70 px-3 py-2 text-[11px] leading-relaxed text-gold-ink">
-              <strong className="font-semibold">Supplier terms.</strong> 45% of stock is billed on 30-day terms. Bills are paid at the
-              next close if cash allows; if it does not, the bill rolls over with a 2% late fee and shows as overdue.
+              <strong className="font-semibold">Supplier terms.</strong> 45% of stock is billed on 30-day terms. Bills settle at the
+              next close if cash allows; if it does not, the bill rolls over with a 2% late fee and shows as overdue. You can
+              also pay ahead of time — the cash leaves today and the late-fee risk goes with it.
             </div>
+
+            {openBills.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-paper-3/50 px-3 py-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-ink">
+                    {money(game.payables ?? 0)} across {openBills.length} open bill{openBills.length === 1 ? '' : 's'}
+                  </p>
+                  <p className="mt-0.5 text-[10.5px] text-ink-400">
+                    Cash on hand {money(game.cash)} · {overdueBills.length > 0 ? `${overdueBills.length} already overdue` : 'nothing overdue'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => payAllBills()}
+                  disabled={game.status !== 'active'}
+                  className="rounded-full bg-ink px-3.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-ink-800 disabled:opacity-40"
+                >
+                  Run a payment run
+                </button>
+              </div>
+            )}
             {bills.length === 0 ? (
               <EmptyState icon={<Receipt className="size-4" />} text="No supplier bills yet. Stock purchases on credit appear here." />
             ) : (
@@ -365,7 +389,14 @@ export function FinancePanel({ game: injected, initialTab = 'pl' }: { game?: Gam
                   .sort((a, b) => b.issuedMonth - a.issuedMonth || a.id.localeCompare(b.id))
                   .slice(0, 12)
                   .map((bill) => (
-                    <BillRow key={bill.id} bill={bill} month={game.month} />
+                    <BillRow
+                      key={bill.id}
+                      bill={bill}
+                      month={game.month}
+                      cash={game.cash}
+                      canPay={game.status === 'active' && !injected}
+                      onPay={() => payBill(bill.id)}
+                    />
                   ))}
               </ul>
             )}
@@ -400,8 +431,21 @@ function StatusPill({ status }: { status: Bill['status'] | Invoice['status'] }) 
   )
 }
 
-function BillRow({ bill, month }: { bill: Bill; month: number }) {
+function BillRow({
+  bill,
+  month,
+  cash,
+  canPay,
+  onPay,
+}: {
+  bill: Bill
+  month: number
+  cash: number
+  canPay: boolean
+  onPay: () => void
+}) {
   const due = bill.status === 'paid' ? null : Math.max(0, bill.dueMonth - month)
+  const affordable = cash >= bill.amount
   return (
     <li className="flex items-start justify-between gap-3 py-2.5">
       <div className="min-w-0">
@@ -410,6 +454,17 @@ function BillRow({ bill, month }: { bill: Bill; month: number }) {
           Issued {monthLabel(bill.issuedMonth)} · {bill.status === 'paid' ? `paid ${monthLabel(bill.paidMonth ?? bill.dueMonth)}` : due === 0 ? 'due now' : `due in ${due} month${due === 1 ? '' : 's'}`}
           {bill.lateFee > 0 && ` · ${money(bill.lateFee)} late fee`}
         </p>
+        {bill.status !== 'paid' && canPay && (
+          <button
+            type="button"
+            onClick={onPay}
+            disabled={!affordable}
+            aria-label={`Pay ${money(bill.amount)} to ${bill.vendor} now`}
+            className="mt-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[10.5px] font-semibold text-ink-600 transition hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {affordable ? 'Pay now' : `Need ${money(bill.amount - cash)} more`}
+          </button>
+        )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <Figure value={bill.status === 'paid' ? bill.paid : bill.amount} strength="strong" />

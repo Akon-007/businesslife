@@ -446,3 +446,66 @@ This closes the honesty gap left by "no visual QA" as far as it can be closed wi
 known to render from real state with correct numbers. It still says nothing about layout, colour, hover states
 or interaction. `FinancePanel` gained `game` and `initialTab` props to make that possible; the game passes
 neither.
+
+
+### 9.12 Marketing centre and supplier payment runs — **implemented**
+
+**Payment runs.** Supplier bills are no longer something that only happens to the player at the close.
+
+| Before | After |
+|---|---|
+| Bills could only be paid automatically when they fell due | `payBill(billId)` and `payAllBills()` settle bills immediately, oldest-due first, while cash allows; the remainder stays open |
+| A mid-close payment had nowhere to be recorded | Early payments post to `flows.billsPaid`, so the next cash-flow statement shows them and the balance sheet still balances |
+| The player could only watch a late fee happen | Paying before the due date avoids the rollover fee entirely; the cash-flow statement shows the payment, and `balance.imbalance` stays 0 |
+
+**Marketing.** The budget was one slider with a hidden conversion formula.
+
+| Before | After |
+|---|---|
+| One marketing number, one opaque effect | Four channels — social, search, content, events — with different cost, lead quality and industry fit. The mix sets a demand multiplier between 0.85× and 1.2× (`mixFactor`) |
+| No idea which customers came from where | **Attribution**: 70% of new customers are split across channels by share × fit (largest-remainder rounding, so the parts always equal the whole); the other 30% is labelled word of mouth |
+| No acquisition economics | **CAC** per channel and blended, **LTV** from gross margin × expected life (1/churn), and the **LTV:CAC ratio** with a plain-English verdict |
+| Nothing accumulated | `channelStats` keeps cumulative spend and customers won per channel for the run |
+
+**Marketing studio** panel (`src/components/game/MarketingPanel.tsx`): five presets (Balanced, Reach, Intent,
+Authority, Deals), a slider per channel that rebalances the others to keep shares at 100%, an attribution table
+with spend / won / CAC per row and a total, the cheapest and most expensive channel, and a unit-economics block.
+Every adjustment is a journaled decision (`setMarketingChannel`, `setMarketingMix`), so the server replay covers
+it exactly as it covers a price change.
+
+**Journal hardening:** operations that are meaningless without a target id (hire, fire, select supplier, push a
+deal, open a branch, pay a bill, resolve a crisis, accept an offer, set a channel share) are now *required* to
+carry one; a journal entry without it is rejected rather than silently becoming a no-op.
+
+Verification: `scripts/verify-centres.ts` (33 assertions, wired into `npm run verify`) covers payment runs
+(single, bulk, unaffordable, empty, ledger effect, statement tie-out, replay identity) and the marketing model
+(normalisation, redistribution, mix factor bounds, attribution totals and rounding, unit economics arithmetic,
+in-run report fields, journal validation and replay identity). Render smoke test now also renders the marketing
+studio. Full suite green: api 74 · auth 23 · scoring · determinism · cash · contrast 24 · statements 33 ·
+render 30 · centres 33 · replay 22 · legit play.
+
+**Honest boundaries:** channels are four fixed definitions, not configurable campaign objects — there is no
+objective/audience/creative/duration, no promotions or bundles, and no elasticity curve to study. Attribution is
+the stated 70/30 rule, not multi-touch. Payment runs settle whole bills; there is no partial payment, credit-note
+or early-payment discount negotiation.
+
+
+### 9.13 Wiring gate and character dialogue — **implemented**
+
+The API is a hand-written `node:http` router, so nothing at build time proved that a path the browser calls
+still exists. That is now a gate.
+
+| Before | After |
+|---|---|
+| Renaming a route could silently break a screen until someone clicked it | `scripts/verify-wiring.mjs` parses the client's `request()` / `fetch()` calls and the server's literal routes, regex matchers and `/:id/<action>` sub-actions, then fails on any client path with no server route. Wired into `npm run verify` |
+| "Built but not wired" was an opinion | The script also prints every server route with no client caller — 13 today — and `docs/wiring.md` explains each one |
+| The dialogue endpoint existed but nothing called it | `talkToCharacter` was dead client code; the Nova panel now carries a **stakeholder dialogue** section: the character roster comes from `GET /ai/characters`, messages go to `POST /ai/dialogue`, rate limits and guardrail blocks are surfaced, and the panel states that characters cannot change state |
+
+Payment runs and the marketing mix deliberately add **no** routes: they are journal ops carried inside the
+`PUT /companies/:id/run` commit, so the server re-executes them like any other decision.
+
+`docs/wiring.md` carries the full matrix (feature → client entry point → route → which suite proves it) plus
+the honest gaps: the marketplace, admin console, `forecast`, `operations/overview`, `notifications` and
+`npcs` surfaces are server-side only.
+
+Verification: `verify:wiring` (23 client calls, 0 unwired) · render test now covers the dialogue panel.

@@ -45,6 +45,8 @@ async function main() {
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { FinancePanel } = await import('../src/components/game/FinancePanel')
   const { ReportModal } = await import('../src/components/game/modals')
+  const { MarketingPanel } = await import('../src/components/game/MarketingPanel')
+  const { CharacterDialogue } = await import('../src/components/game/CharacterDialogue')
   const { advanceMonth, resolveCrisis, startGame } = await import('../src/game/engine')
   const { money } = await import('../src/lib/format')
 
@@ -87,6 +89,34 @@ for (const industry of ['saas', 'retail'] as const) {
   })
   check(`${industry}: every tab renders clean`, broken.length === 0, broken.join(', '))
   check(`${industry}: no NaN or undefined leaked into the markup`, !/NaN|undefined|\[object Object\]/.test(markup))
+
+  let marketingMarkup = ''
+  let marketingError: unknown = null
+  try {
+    marketingMarkup = renderToStaticMarkup(<MarketingPanel game={game} />)
+  } catch (caught) {
+    marketingError = caught
+  }
+  const marketingText = marketingMarkup.replace(/&amp;/g, '&')
+  check(`${industry}: marketing studio renders`, !marketingError, marketingError instanceof Error ? marketingError.message : String(marketingError))
+  if (!marketingError) {
+    check(`${industry}: marketing shows the mix controls`, ['Social & creators', 'Search & intent', 'Content & SEO', 'Events & B2B'].every((label) => marketingText.includes(label)))
+    check(`${industry}: marketing shows attribution and unit economics`, marketingText.includes('Attribution') && marketingText.includes('LTV : CAC'))
+    check(`${industry}: marketing has no leaked values`, !/NaN|undefined|\[object Object\]/.test(marketingMarkup))
+  }
+
+  let dialogueMarkup = ''
+  let dialogueError: unknown = null
+  try {
+    dialogueMarkup = renderToStaticMarkup(<CharacterDialogue game={game} />)
+  } catch (caught) {
+    dialogueError = caught
+  }
+  check(`${industry}: character dialogue renders`, !dialogueError, dialogueError instanceof Error ? dialogueError.message : String(dialogueError))
+  if (!dialogueError) {
+    check(`${industry}: dialogue states the guardrails`, dialogueMarkup.includes('No tools, no state changes'))
+    check(`${industry}: dialogue has no leaked values`, !/NaN|undefined|\[object Object\]/.test(dialogueMarkup))
+  }
 
   const report = game.lastReport
   let reportMarkup = ''

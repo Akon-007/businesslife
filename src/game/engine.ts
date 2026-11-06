@@ -18,7 +18,17 @@ import {
   strategyById,
 } from './data'
 import { ALL_LEVELS } from './progression'
-import { BILL_SHARE, VENDORS, billDueMonth, buildStatements, openPayables, settleBills } from './accounting'
+import { BILL_SHARE, VENDORS, billDueMonth, buildStatements, openPayables, payBills, settleBills } from './accounting'
+import {
+  DEFAULT_MIX,
+  MARKETING_CHANNELS,
+  attributeCustomers,
+  channelSpend,
+  mixFactor,
+  normalizeMix,
+  unitEconomics,
+  withChannelShare,
+} from './marketing'
 import type {
   Bill,
   Candidate,
@@ -30,6 +40,8 @@ import type {
   Employee,
   FlowBucket,
   FounderBackgroundId,
+  ChannelPerformance,
+  MarketingChannelId,
   GameMetrics,
   GameState,
   IndustryId,
@@ -269,13 +281,15 @@ export function startGame(input: {
     receivables: 0,
     bills: [],
     payables: 0,
+    marketingMix: { ...DEFAULT_MIX },
+    channelStats: MARKETING_CHANNELS.map((channel) => ({ channel: channel.id, spend: 0, customers: 0 })),
     inventoryValue: industry.inventory
       ? Math.round(1.6 * startingCustomers * industry.costPerCustomer)
       : 0,
     fixedAssets: 0,
     paidInCapital: startingCash + (industry.inventory ? Math.round(1.6 * startingCustomers * industry.costPerCustomer) : 0),
     retainedEarnings: 0,
-    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, billsPaid: 0, expenses: 0, otherIncome: 0 },
     statements: [],
     seenCrises: [],
     log: [],
@@ -455,7 +469,7 @@ export function newCustomersEstimate(state: GameState) {
   const qualityFactor = 0.55 + (state.quality / 100) * 0.9
   const reputationFactor = 0.55 + state.reputation / 140
   const salesFactor = 0.65 + salesPower / 26
-  const spendFactor = 0.65 + (state.marketingSpend / 2400) * (0.7 + marketingPower / 18)
+  const spendFactor = (0.65 + (state.marketingSpend / 2400) * (0.7 + marketingPower / 18)) * mixFactor(state)
   const moraleFactor = 0.8 + state.morale / 300
   const branchLift = branchDemandOf(state) * (0.55 + state.quality / 130)
   const economyFactor = state.economy?.demand ?? 1
@@ -530,7 +544,7 @@ export function authorityPayload(state: GameState) {
  * cash-flow statement and the balance sheet still tie out.
  */
 function recordFlow(state: GameState, key: keyof FlowBucket, amount: number): FlowBucket {
-  const flows = state.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 }
+  const flows = state.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, billsPaid: 0, expenses: 0, otherIncome: 0 }
   if (!Number.isFinite(amount) || amount === 0) return flows
   return { ...flows, [key]: (flows[key] ?? 0) + amount }
 }
@@ -1037,6 +1051,7 @@ export function advanceMonth(state: GameState): GameState {
     funding: next.flows?.funding ?? 0,
     borrow: (next.flows?.borrow ?? 0) + emergencyBorrow,
     repay: next.flows?.repay ?? 0,
+    billsPaid: next.flows?.billsPaid ?? 0,
     expenses: next.flows?.expenses ?? 0,
     otherIncome: (next.flows?.otherIncome ?? 0) + pipeline.cash,
   }
@@ -1068,7 +1083,7 @@ export function advanceMonth(state: GameState): GameState {
     cashSales,
     collections: settlement.collected,
     stockPaid: cashForStock,
-    billsPaid: billSettlement.paid,
+    billsPaid: billSettlement.paid + flows.billsPaid,
     cashSpoilage: spoilage,
     state: next,
     inventoryValue,
@@ -1087,7 +1102,7 @@ export function advanceMonth(state: GameState): GameState {
     paidInCapital,
     retainedEarnings,
     statements: [...(state.statements ?? []), statement].slice(-24),
-    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    flows: { capex: 0, funding: 0, borrow: 0, repay: 0, billsPaid: 0, expenses: 0, otherIncome: 0 },
   }
 
   const insights = buildInsights(next)
@@ -1166,6 +1181,36 @@ export function advanceMonth(state: GameState): GameState {
     crisisQueued = true
   }
 
+  // Attribution: who the month's new customers came through, and what that cost.
+  const wonCustomers = newCustomers + pipeline.customers
+  const attribution = attributeCustomers(wonCustomers, state)
+  const spends = channelSpend(state)
+  const channels: ChannelPerformance[] = attribution.map((row) => {
+    const spend = row.channel === 'organic' ? 0 : spends.find((item) => item.channel === row.channel)?.spend ?? 0
+    return {
+      channel: row.channel,
+      spend,
+      customers: row.customers,
+      cac: row.channel === 'organic' || row.customers <= 0 ? 0 : Math.round(spend / row.customers),
+    }
+  })
+  const paidCustomers = channels.filter((row) => row.channel !== 'organic').reduce((sum, row) => sum + row.customers, 0)
+  const paidSpend = spends.reduce((sum, item) => sum + item.spend, 0)
+  const economics = unitEconomics({
+    arpu: revenue / Math.max(1, state.customers),
+    costPerCustomer: industry.costPerCustomer,
+    churn: churnRate,
+    spend: paidSpend,
+    customersWon: paidCustomers,
+  })
+  const channelStats = MARKETING_CHANNELS.map((channel) => {
+    const previous = (state.channelStats ?? []).find((item) => item.channel === channel.id)
+    const spend = spends.find((item) => item.channel === channel.id)?.spend ?? 0
+    const won = channels.find((row) => row.channel === channel.id)?.customers ?? 0
+    return { channel: channel.id, spend: (previous?.spend ?? 0) + spend, customers: (previous?.customers ?? 0) + won }
+  })
+  next = { ...next, channelStats }
+
   const newAchievements = next.achievements.filter((id) => !state.achievements.includes(id))
 
   const report: MonthReport = {
@@ -1204,6 +1249,9 @@ export function advanceMonth(state: GameState): GameState {
     depreciation,
     badDebt,
     netProfit: statement.income.netProfit,
+    channels,
+    cac: economics.cac,
+    ltv: economics.ltv,
   }
 
   next = { ...next, lastReport: report }
@@ -1440,6 +1488,21 @@ export function setPrice(state: GameState, price: number): GameState {
   return { ...state, price: clamp(Math.round(price), industry.priceMin, industry.priceMax) }
 }
 
+/** Reallocate the marketing budget: set one channel's share, spread the rest. */
+export function setMarketingChannel(state: GameState, channelId: string, share: number): GameState {
+  const known = MARKETING_CHANNELS.some((channel) => channel.id === channelId)
+  if (!known) return state
+  return {
+    ...state,
+    marketingMix: withChannelShare(state.marketingMix, channelId as MarketingChannelId, share),
+  }
+}
+
+/** Replace the whole mix at once (presets), normalised to shares that sum to 1. */
+export function setMarketingMix(state: GameState, mix: Partial<Record<MarketingChannelId, number>>): GameState {
+  return { ...state, marketingMix: normalizeMix(mix) }
+}
+
 export function setMarketing(state: GameState, amount: number): GameState {
   return { ...state, marketingSpend: clamp(Math.round(amount), 0, 20_000) }
 }
@@ -1498,6 +1561,50 @@ export function pushDeal(state: GameState, dealId: string): GameState {
       kind: 'market',
     },
   )
+}
+
+/**
+ * Pay one supplier bill now, ahead of the next close. The cash and the payable
+ * both move immediately, so the ledger stays consistent.
+ */
+export function payBill(state: GameState, billId: string): GameState {
+  const payment = payBills(state.bills ?? [], [billId], state.month, Math.max(0, state.cash))
+  if (!payment.paidIds.length) return state
+  const next: GameState = {
+    ...state,
+    cash: state.cash - payment.paid,
+    bills: payment.bills,
+    payables: openPayables(payment.bills),
+    flows: recordFlow(state, 'billsPaid', payment.paid),
+  }
+  const bill = (state.bills ?? []).find((item) => item.id === billId)
+  return addLog(next, {
+    month: state.month,
+    title: 'Supplier bill paid',
+    detail: `${money(payment.paid)} paid${bill ? ` to ${bill.vendor}` : ''} before the due date.`,
+    tone: 'neutral',
+    kind: 'finance',
+  })
+}
+
+/** A payment run: settle every open bill the cash can cover, oldest due first. */
+export function payAllBills(state: GameState): GameState {
+  const payment = payBills(state.bills ?? [], 'all', state.month, Math.max(0, state.cash))
+  if (!payment.paidIds.length) return state
+  const next: GameState = {
+    ...state,
+    cash: state.cash - payment.paid,
+    bills: payment.bills,
+    payables: openPayables(payment.bills),
+    flows: recordFlow(state, 'billsPaid', payment.paid),
+  }
+  return addLog(next, {
+    month: state.month,
+    title: 'Supplier payment run',
+    detail: `${payment.paidIds.length} bill${payment.paidIds.length === 1 ? '' : 's'} settled for ${money(payment.paid)}.`,
+    tone: 'neutral',
+    kind: 'finance',
+  })
 }
 
 export function openBranch(state: GameState, branchId: string): GameState {
@@ -1635,11 +1742,15 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     receivables: game.receivables ?? 0,
     bills: game.bills ?? [],
     payables: game.payables ?? 0,
+    marketingMix: normalizeMix(game.marketingMix),
+    channelStats: game.channelStats?.length
+      ? game.channelStats
+      : MARKETING_CHANNELS.map((channel) => ({ channel: channel.id, spend: 0, customers: 0 })),
     inventoryValue: game.inventoryValue ?? 0,
     fixedAssets: game.fixedAssets ?? 0,
     paidInCapital: game.paidInCapital ?? game.cash ?? 0,
     retainedEarnings: game.retainedEarnings ?? 0,
-    flows: game.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, expenses: 0, otherIncome: 0 },
+    flows: game.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, billsPaid: 0, expenses: 0, otherIncome: 0 },
     statements: game.statements ?? [],
     authority: game.authority ?? undefined,
     beginner: migratedProgress,

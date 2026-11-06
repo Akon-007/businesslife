@@ -72,6 +72,44 @@ export function settleBills(bills: Bill[], month: number, cashAvailable: number)
   return { bills: next, paid, lateFees, overdue }
 }
 
+export interface BillPayment {
+  bills: Bill[]
+  paid: number
+  paidIds: string[]
+}
+
+/**
+ * A payment run: settle named bills (or every open bill) now, out of the cash
+ * that is available. Bills are taken oldest-due first, the full outstanding
+ * amount is paid — including any late fee already added to it — and anything
+ * the cash cannot cover stays open for the next attempt.
+ */
+export function payBills(bills: Bill[], ids: string[] | 'all', month: number, cashAvailable: number): BillPayment {
+  const wanted = ids === 'all' ? null : new Set(ids)
+  const open = bills
+    .filter((bill) => bill.status !== 'paid' && (!wanted || wanted.has(bill.id)))
+    .sort((a, b) => a.dueMonth - b.dueMonth || a.id.localeCompare(b.id))
+
+  const paidIds: string[] = []
+  let cash = cashAvailable
+  let paid = 0
+  const settled = new Map<string, Bill>()
+
+  for (const bill of open) {
+    if (bill.amount <= 0 || cash < bill.amount) continue
+    cash -= bill.amount
+    paid += bill.amount
+    paidIds.push(bill.id)
+    settled.set(bill.id, { ...bill, status: 'paid', paidMonth: month, paid: bill.amount })
+  }
+
+  return {
+    bills: bills.map((bill) => settled.get(bill.id) ?? bill),
+    paid,
+    paidIds,
+  }
+}
+
 /** Inventory at cost: months of cover × this month's cost of goods sold. */
 export function inventoryValueOf(cover: number, cogs: number): number {
   return Math.max(0, Math.round(cover * cogs))

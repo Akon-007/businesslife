@@ -59,6 +59,8 @@ import { money, monthLabel, number, percent } from '../../lib/format'
 import { Sparkline } from '../ui/Charts'
 import { PanelSection, RangeRow, Stat } from './bits'
 import { FinancePanel } from './FinancePanel'
+import { MarketingPanel } from './MarketingPanel'
+import { CharacterDialogue } from './CharacterDialogue'
 import { useDialogFocus } from '../ui/useDialogFocus'
 
 export type PanelId =
@@ -75,6 +77,7 @@ export type PanelId =
   | 'journey'
   | 'apps'
   | 'finance'
+  | 'marketing'
 
 export const PANEL_META: Record<PanelId, { title: string; kicker: string; description: string; icon: LucideIcon; color: string }> = {
   company: {
@@ -153,6 +156,13 @@ export const PANEL_META: Record<PanelId, { title: string; kicker: string; descri
     description: 'A playable path from business idea to first sales and break-even.',
     icon: ListChecks,
     color: '#0f9c72',
+  },
+  marketing: {
+    title: 'Marketing studio',
+    kicker: 'Demand',
+    description: 'Split the budget across channels, then read who each channel actually won.',
+    icon: Megaphone,
+    color: '#f5a623',
   },
   finance: {
     title: 'Finance centre',
@@ -262,6 +272,7 @@ export function Drawer({
               {panel === 'journey' && <JourneyPanel />}
               {panel === 'apps' && <AppsPanel onNavigate={onNavigate} />}
               {panel === 'finance' && <FinancePanel />}
+              {panel === 'marketing' && <MarketingPanel />}
             </div>
           </motion.aside>
         </div>
@@ -1707,6 +1718,8 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
       </section>
 
       <AskNova game={game} />
+
+      <CharacterDialogue game={game} />
 
       <PanelSection title="The numbers Nova used">
         <div className="grid grid-cols-2 gap-2">

@@ -239,6 +239,25 @@ export function talkToCharacter(companyId: string, character: string, message: s
   return request<AiReply>(`/api/companies/${companyId}/ai/dialogue`, { method: 'POST', body: JSON.stringify({ character, message }) })
 }
 
+export interface AiCharacter {
+  id: string
+  name: string
+  role: string
+  goals: string[]
+  personality: string
+  knowledge: string[]
+}
+
+export interface AiCharacterCatalog {
+  characters: AiCharacter[]
+  provider: string
+  guardrails: { tools: string; rateLimit: string; stateChanges: string; numericValidation: string }
+}
+
+export function fetchCharacters(companyId: string): Promise<AiCharacterCatalog> {
+  return request<AiCharacterCatalog>(`/api/companies/${companyId}/ai/characters`)
+}
+
 // ---------------------------------------------------------------------------
 // Instructor portal
 // ---------------------------------------------------------------------------
