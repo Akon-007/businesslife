@@ -960,3 +960,32 @@ nothing to do with Supabase:
 - **The template told people to keep `PORT=8788`** while the README documented
   8787. Both now describe the same rule, and the `--check` path from 9.23 got used
   for real: the string it approved was the one that then migrated.
+
+### 9.25 `SELF_SIGNED_CERT_IN_CHAIN` — **diagnosed, not papered over**
+
+The first live migration failed at the TLS handshake, before a single statement ran.
+The cause is almost never the database: Node ships its own root bundle and ignores
+the Windows certificate store and the macOS Keychain, so a corporate proxy, VPN or
+antivirus that re-signs TLS makes every Supabase connection fail while the browser
+works fine.
+
+Rather than tell people to switch verification off:
+
+- **`npm run db:smoke -- --tls`** inspects the chain and nothing else. It proceeds
+  in two passes — first ignoring trust to read the certificate, then with Node's
+  default trust — and reports the subject, the **issuer** and the expiry, then
+  whether the chain verifies. An issuer that is your employer, a VPN vendor or an
+  antivirus confirms interception; `ENOTFOUND`/`ECONNREFUSED`/`ETIMEDOUT` mean the
+  problem is the network and say so. Proven against a real self-signed server
+  (`DEPTH_ZERO_SELF_SIGNED_CERT`) and against a public host (`✓ trusted`).
+- **`DB_SSL_CA`** pins an extra root for the API and both scripts. Verified with a
+  genuine handshake against that self-signed server: without the root the connect is
+  rejected, with it the same handshake verifies — with `rejectUnauthorized` still
+  true. Nine new `verify:db` checks cover the default, the pinned root, a missing
+  file failing loudly by path, and the insecure path still warning.
+- **`DB_SSL_INSECURE`** remains the last resort and now says so in the log: the
+  connection stays encrypted but the server is not authenticated. Previously it
+  downgraded silently.
+
+`NODE_OPTIONS=--use-system-ca` and `NODE_EXTRA_CA_CERTS` need no code and are
+documented first, because they keep verification on.

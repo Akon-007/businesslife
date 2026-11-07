@@ -10,7 +10,7 @@
  *
  *   npx tsx scripts/verify-db.ts
  */
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -375,6 +375,44 @@ async function main() {
   check('TLS stays strict for a normal URL', sslFor(sample)?.rejectUnauthorized === true && sslFor(`${sample}?sslmode=require`)?.rejectUnauthorized === true)
   check('sslmode=disable turns TLS off rather than downgrading it', sslFor(`${sample}?sslmode=disable`) === undefined)
   check('an unparseable URL is passed through untouched', pgConnectionString('not a url') === 'not a url')
+
+  // TLS configuration: a TLS-inspecting proxy needs an extra root, and the only
+  // safe fix is to add one — not to stop verifying.
+  const caDir = mkdtempSync(join(tmpdir(), 'bl-ca-'))
+  const caFile = join(caDir, 'root.pem')
+  const pem = '-----BEGIN CERTIFICATE-----\nMIIBtest\n-----END CERTIFICATE-----\n'
+  writeFileSync(caFile, pem)
+  const savedCa = process.env.DB_SSL_CA
+  const savedInsecure = process.env.DB_SSL_INSECURE
+  try {
+    delete process.env.DB_SSL_CA
+    delete process.env.DB_SSL_INSECURE
+    check('by default TLS verifies the chain and adds no root', sslFor(sample)?.rejectUnauthorized === true && sslFor(sample)?.ca === undefined)
+
+    process.env.DB_SSL_CA = caFile
+    check('DB_SSL_CA pins the extra root a corporate proxy needs', sslFor(sample)?.ca?.includes('BEGIN CERTIFICATE') === true)
+    check('DB_SSL_CA does not disable verification', sslFor(sample)?.rejectUnauthorized === true)
+
+    process.env.DB_SSL_CA = join(caDir, 'missing.pem')
+    let caError = ''
+    try { sslFor(sample) } catch (caught) { caError = caught instanceof Error ? caught.message : String(caught) }
+    check('a DB_SSL_CA path that does not exist fails loudly, naming the path', caError.includes('missing.pem') && caError.includes('could not be read'), caError)
+
+    delete process.env.DB_SSL_CA
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')) }
+    process.env.DB_SSL_INSECURE = 'true'
+    const insecure = sslFor(sample)
+    console.warn = originalWarn
+    check('DB_SSL_INSECURE still verifies nothing, but says so', insecure?.rejectUnauthorized === false && warnings.some((line) => line.includes('not authenticated')), warnings.join(' | '))
+  } finally {
+    if (savedCa === undefined) delete process.env.DB_SSL_CA
+    else process.env.DB_SSL_CA = savedCa
+    if (savedInsecure === undefined) delete process.env.DB_SSL_INSECURE
+    else process.env.DB_SSL_INSECURE = savedInsecure
+    rmSync(caDir, { recursive: true, force: true })
+  }
 
   // Every table the driver writes must be declared in schema.sql.
   const written = Object.keys(encode(data).rows)

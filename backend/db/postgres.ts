@@ -15,6 +15,7 @@
  * Everything runs in a single transaction in dependency order, so a failure
  * halfway through cannot leave a company without its owner.
  */
+import { readFileSync } from 'node:fs'
 import type { ClassRoom, ClassroomRecord, Database, Id, Player, Session } from '../types.js'
 import type { ClientLease, DatabaseStore, Queryable, QueryablePool, Rows } from './types.js'
 
@@ -424,11 +425,38 @@ export function pgConnectionString(url: string): string {
   return url
 }
 
-/** `sslmode=disable` means plaintext; anything else verifies the chain. */
-export function sslFor(url: string): { rejectUnauthorized: boolean } | undefined {
-  return /(^|[?&])sslmode=disable(&|$)/.test(url)
-    ? undefined
-    : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+let insecureWarned = false
+
+/**
+ * `sslmode=disable` means plaintext; anything else verifies the chain.
+ *
+ * `DB_SSL_CA` pins an extra root, which is what a TLS-inspecting corporate proxy
+ * or antivirus needs: Node reads neither the Windows certificate store nor
+ * Keychain by default, so a chain re-signed locally fails with
+ * `SELF_SIGNED_CERT_IN_CHAIN`. `NODE_OPTIONS=--use-system-ca` and
+ * `NODE_EXTRA_CA_CERTS` also work and need no code here.
+ *
+ * `DB_SSL_INSECURE` remains the last resort and says so out loud.
+ */
+export function sslFor(url: string): { rejectUnauthorized: boolean; ca?: string } | undefined {
+  if (/(^|[?&])sslmode=disable(&|$)/.test(url)) return undefined
+
+  const insecure = process.env.DB_SSL_INSECURE === 'true'
+  if (insecure && !insecureWarned) {
+    insecureWarned = true
+    console.warn('[db] TLS verification is off (DB_SSL_INSECURE=true) — the connection is encrypted but the server is not authenticated. Prefer DB_SSL_CA or NODE_EXTRA_CA_CERTS.')
+  }
+
+  const caPath = (process.env.DB_SSL_CA ?? '').trim()
+  let ca: string | undefined
+  if (caPath) {
+    try {
+      ca = readFileSync(caPath, 'utf8')
+    } catch (cause) {
+      throw new Error(`DB_SSL_CA points at ${caPath}, which could not be read (${cause instanceof Error ? cause.message : String(cause)})`)
+    }
+  }
+  return { rejectUnauthorized: !insecure, ...(ca ? { ca } : {}) }
 }
 
 /** `pg` Pool is only imported when a Postgres URL is actually configured. */
