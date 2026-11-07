@@ -40,6 +40,11 @@ storage: postgres (DATABASE_URL)
    SUPABASE_DB_URL=postgresql://postgres.abcdefgh:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
    ```
 
+   Some templates hand you two URLs instead — a `DATABASE_URL` on the transaction
+   pooler (6543) and a `DIRECT_URL` on the session pooler (5432). Both are fine to
+   keep: the API uses the first, and `npm run db:migrate` prefers `DIRECT_URL`
+   because a migration is one multi-statement transaction.
+
    Prefer exporting it by hand? `export SUPABASE_DB_URL=…` works identically.
    Never commit it: `.env` is in `.gitignore`.
 

@@ -19,12 +19,23 @@ if (existsSync(envFile)) {
   try { process.loadEnvFile(envFile) } catch (cause) { console.warn(`ignoring .env: ${cause.message}`) }
 }
 
-const url = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
+/**
+ * The migration runs one multi-statement transaction, which is exactly what
+ * Supavisor's transaction mode (6543) is worst at. Templates that ship both URLs
+ * call the session-mode one DIRECT_URL; honour it. Otherwise use the same URL
+ * the app uses.
+ */
+const appUrl = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
+const directUrl = (process.env.DIRECT_URL ?? '').trim()
+const usingDirect = Boolean(directUrl) && directUrl !== appUrl
+const url = usingDirect ? directUrl : appUrl
+
 if (!url) {
   console.error('\nNo database URL. Set SUPABASE_DB_URL (or DATABASE_URL) with ?sslmode=require and retry.')
   console.error('Nothing was changed.\n')
   process.exit(1)
 }
+if (usingDirect) console.log('\nusing DIRECT_URL for the migration (session pooler / direct connection)')
 
 const schema = readFileSync(fileURLToPath(new URL('../backend/db/schema.sql', import.meta.url)), 'utf8')
 

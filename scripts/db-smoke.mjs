@@ -62,6 +62,11 @@ console.log('\nDatabase smoke test\n')
 console.log(`      host: ${parsed.hostname}:${port}${isSupabase ? ' (Supabase)' : ''}`)
 console.log(`      user: ${decodeURIComponent(parsed.username)}`)
 console.log(`      database: ${parsed.pathname.replace(/^\//, '') || 'postgres'}`)
+const directUrl = (process.env.DIRECT_URL ?? '').trim()
+if (directUrl && directUrl !== url) {
+  const directPort = new URL(directUrl).port || '5432'
+  console.log(`      DIRECT_URL is set too (:${directPort}) — db:migrate will use that one, the app uses this one`)
+}
 
 if (isSupabase) {
   const mode = isPooler ? (port === 6543 ? 'Supavisor, transaction mode' : port === 5432 ? 'Supavisor, session mode' : `pooler on port ${port}`) : 'direct connection'
