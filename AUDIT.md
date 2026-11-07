@@ -24,7 +24,7 @@
 
 **Headline:** this is a **strong, playable single-player prototype of a business simulator** with a genuinely modelled monthly economy — but it is **not** the product described in the scope. The PDF specifies an AI-enabled, server-authoritative, institution-facing platform (LLM stakeholders, RBAC, lecturer portal, multiplayer, reproducible scenarios, statements, exports). What exists is a polished client-side web game with an under-used backend and no AI, no instructor surface, no multiplayer and no test coverage.
 
-**Coverage of the scope document: ~83% implemented, ~13% partial, ~4% absent** — weighted across simulation,
+**Coverage of the scope document: ~86% implemented, ~11% partial, ~3% absent** — weighted across simulation,
 assessment tooling, integration, interface, verification and hardening; the MVP acceptance criteria (§16.2) now
 stand at **12 pass / 1 partial / 0 fail** (see §4). The remainder is concentrated in the places §6 names: a
 server-owned simulation, granular roles/RBAC, a real database, and the unbuilt §6.11 governance surface.
@@ -829,3 +829,50 @@ works. Wiring is **27/27**.
 **Not done, and stated plainly:** permissions are per role, not per record beyond the existing "my own students"
 checks, there is no role assignment UI (roles come from registration/dev sign-in), and there are no per-department
 or per-course scopes.
+
+### 9.22 Postgres storage, ready for Neon — **implemented and verified against real Postgres**
+
+The API had one datastore: a JSON file next to the server. That is fine for a
+developer and wrong for a cohort of students — one process writing one document,
+no concurrency control, no queryable records, no backup story beyond copying a
+file.
+
+**One seam, two drivers.** `backend/store.ts` is now a facade over
+`loadDatabase()` / `saveDatabase()`; `backend/db/index.ts` chooses the driver from
+`DATABASE_URL` (or `NEON_DATABASE_URL`). No route changed. The JSON driver stays:
+running the whole app with no database is a useful property, not scaffolding. The
+boot log states which driver is live, and a bad URL fails with one readable line
+(`Storage is not reachable (postgres): connect ECONNREFUSED …`) instead of a pool
+stack trace.
+
+**Schema** (`backend/db/schema.sql`): one row per aggregate with the domain object
+in `jsonb`, and the fields that are actually queried lifted into real columns —
+`players.account_email` (generated), `players.role`, `sessions.token/expires_at`,
+`companies.player_id/sector/status`, `classes.lecturer_id`, plus `class_students`
+and `classroom_records` as real tables so membership and grades are SQL, not a
+scan of a class document. `lti_keys` holds the LTI signing key; `app_meta` holds
+the schema version. Everything is `if not exists`, so `npm run db:migrate` is
+safe on every deploy. `docs/database.md` documents the mapping, the Neon setup,
+the pooled-vs-direct endpoint choice, and rollback by branch.
+
+**Writes are incremental.** The driver remembers the canonical JSON of each row it
+has written (`canonicalJson`, keys sorted — `jsonb` does not preserve key order)
+and a save touches only changed rows, then prunes removed ones, in one transaction
+in dependency order. A month commit that changes one company writes one row.
+
+**Verified against real Postgres.** `verify:db` (in `npm run verify`) runs the
+schema and the driver against **PGlite — Postgres compiled to WASM, in-process** —
+so the DDL, `on conflict` upserts, foreign keys, deletions and `jsonb` round-trip
+are exercised by an actual Postgres, not a mock. 22 checks: schema applies and
+every declared table exists; a full database round-trips unchanged (grade history
+and the LTI private key included); a one-row change writes one row; an unchanged
+save writes nothing; deleting a company removes its NPCs and leaves no orphans;
+membership and grades are queryable; idempotency keys are unique per player; both
+drivers return the same database for the same fixture.
+
+**Honest limits.** No live Neon endpoint was contacted — this sandbox cannot reach
+`*.neon.tech`, so TLS, pooling, cold start and branch switching are unverified
+until the first deployment is smoke-tested. There is no down-migration (rollback
+is a Neon branch). And the simulation still runs in the browser: Postgres stores
+the authoritative records, it does not make the run itself server-side — that is
+still the remaining work named in §4 row 13.

@@ -59,6 +59,14 @@ mutation would be invisible to replay and unverifiable.
 | PDF month report and run scorecard (`src/lib/pdf.ts`, `src/game/report-pdf.ts`) | Rendered from state the browser already holds, so an offline run still exports. The one server-derived number on the scorecard — the authority score — is already fetched from `GET /api/companies/:id/run` and printed alongside the engine score |
 | Scenario verdict (`src/game/scenarios.ts` `evaluateScenario`) | Computed from the run's own final state against the pack's objectives, using the pack's stamped `ruleVersion`. No server call is needed, and the scorecard and the run-end modal therefore cannot disagree. The *assignment* is server-side (`POST /classes/:id/scenario`); only the arithmetic is local |
 
+## Server-side storage
+
+Storage is not a route, so it does not appear in the tables above. The API talks to
+`loadDatabase()` / `saveDatabase()`; the driver is chosen by `DATABASE_URL` (JSON
+file by default, Postgres/Neon when set). The boot log names the live driver, and
+`npm run verify:db` exercises the Postgres schema and driver against real Postgres
+(PGlite). See `docs/database.md`.
+
 ## Known integration gaps (tracked, not hidden)
 
 1. **Server `forecast`, `operations/overview`, `notifications`, `npcs`, `products`, `procurement`,

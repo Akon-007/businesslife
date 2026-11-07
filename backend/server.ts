@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { devLoginEnabled, hashPassword, instructorCode, issueSession, playerForToken, revokeSession, throttleCheck, throttleFail, throttleReset, verifyPassword } from './auth.js'
 import { BEGINNER_LEVELS, stageSummary } from './stage.js'
 import { ALL_LEVELS, allStageSummaries } from './stages.js'
-import { loadDatabase, newId, now, saveDatabase } from './store.js'
+import { loadDatabase, newId, now, saveDatabase, storeDriver } from './store.js'
 import { amountKobo, breakEven, transferFromFounder } from './finance.js'
 import { evaluateAction, forecast } from './simulation.js'
 import { consumeStock, demandFor, operationsOverview } from './operations.js'
@@ -795,8 +795,23 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   error(response, 404, 'Route not found.')
 }
 
-const database = await loadDatabase()
-database.marketplace = seedMarketplace(database.marketplace)
-await saveDatabase(database)
+/**
+ * Boot the storage layer once, and say which driver is in use.
+ *
+ * A misconfigured DATABASE_URL should stop the process with one readable line,
+ * not a stack trace from inside a pool.
+ */
+let database: Database
+try {
+  database = await loadDatabase()
+  database.marketplace = seedMarketplace(database.marketplace)
+  await saveDatabase(database)
+} catch (caught) {
+  const message = caught instanceof Error ? caught.message : String(caught)
+  console.error(`\nStorage is not reachable (${storeDriver()}): ${message}`)
+  console.error('Check DATABASE_URL — Neon needs ?sslmode=require — or unset it to run on the JSON file store.\n')
+  process.exit(1)
+}
+console.log(`storage: ${storeDriver() === 'postgres' ? 'postgres (DATABASE_URL)' : 'json file (backend/data/businesslife.json)'}`)
 const server = createServer((request, response) => { handle(request, response, database).catch((caught: unknown) => error(response, 400, caught instanceof Error ? caught.message : 'Request failed.')) })
 server.listen(port, host, () => console.log(`BUSINESSLIFE API listening on http://${host}:${port}`))
