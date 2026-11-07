@@ -38,6 +38,7 @@ npm run verify:scenarios # scenario packs start, replay deterministically and sc
 npm run verify:db      # schema, upserts, deletes and jsonb round-trip against real Postgres (PGlite)
 npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`; CI runs it)
 npm run db:migrate      # apply backend/db/schema.sql to DATABASE_URL (Neon)
+npm run db:smoke        # prove a live endpoint: TLS, schema, write/read/delete
 npm run build           # production build
 npm run lint            # oxlint
 ```

@@ -872,7 +872,8 @@ drivers return the same database for the same fixture.
 
 **Honest limits.** No live Neon endpoint was contacted — this sandbox cannot reach
 `*.neon.tech`, so TLS, pooling, cold start and branch switching are unverified
-until the first deployment is smoke-tested. There is no down-migration (rollback
+until the first deployment is smoke-tested — which is what `npm run db:smoke` is for: connection, TLS, the 12
+tables, the schema version, and a write/read/delete of one probe row, with timings. There is no down-migration (rollback
 is a Neon branch). And the simulation still runs in the browser: Postgres stores
 the authoritative records, it does not make the run itself server-side — that is
 still the remaining work named in §4 row 13.

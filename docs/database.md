@@ -76,6 +76,19 @@ after each restart.
 `PGPOOL_MAX` (default 8) sets the pool size. Neon's free tier allows a modest
 number of connections; the pooled endpoint handles the rest.
 
+### Proving the endpoint works
+
+Once you have a URL, run the smoke test **from a machine that can reach Neon**
+(not the sandbox this was built in):
+
+```bash
+DATABASE_URL='postgresql://…-pooler…/neondb?sslmode=require' npm run db:smoke
+```
+
+It checks the connection, that the connection is TLS, that all 12 tables exist,
+the recorded schema version, then writes, reads and deletes one `app_meta` row,
+printing timings. It leaves the data untouched.
+
 ### Migrations and rollback
 
 `backend/db/schema.sql` is additive and uses `if not exists`, so running it twice
