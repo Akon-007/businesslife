@@ -97,8 +97,11 @@ Diagnose without a password:
 npm run db:smoke -- --tls     # uses SUPABASE_DB_URL, or pass a URL after --tls
 ```
 
-It prints the subject, the **issuer** and the expiry, then says whether Node's
-own trust store accepts the chain. If the issuer is your employer, a VPN vendor or
+It speaks the Postgres handshake properly — SSLRequest first, `S`/`N`/`E`, then
+TLS — because Postgres does not offer TLS on connect and a plain TLS handshake
+against 5432 fails with `ERR_SSL_WRONG_VERSION_NUMBER` on a healthy server. It
+prints the subject, the **issuer** and the expiry, then says whether Node's own
+trust store accepts the chain. If the issuer is your employer, a VPN vendor or
 an antivirus product, interception is confirmed.
 
 Fixes, in order of preference — all keep verification on:

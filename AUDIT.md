@@ -974,7 +974,14 @@ Rather than tell people to switch verification off:
 - **`npm run db:smoke -- --tls`** inspects the chain and nothing else. It proceeds
   in two passes — first ignoring trust to read the certificate, then with Node's
   default trust — and reports the subject, the **issuer** and the expiry, then
-  whether the chain verifies. An issuer that is your employer, a VPN vendor or an
+  whether the chain verifies. It **first shipped wrong**: a plain `tls.connect()`
+  against 5432, which Postgres cannot answer, because Postgres waits for an
+  SSLRequest packet and replies `S`/`N`/`E` before TLS begins — so a healthy
+  server was reported as `ERR_SSL_WRONG_VERSION_NUMBER`. The probe is now a module
+  that performs the real handshake, and `scripts/verify-tls-probe.mjs` drives it
+  against in-process fake endpoints (S with a generated self-signed certificate,
+  N, E with a message, and one that never answers), so the failure mode is
+  covered rather than assumed. An issuer that is your employer, a VPN vendor or an
   antivirus confirms interception; `ENOTFOUND`/`ECONNREFUSED`/`ETIMEDOUT` mean the
   problem is the network and say so. Proven against a real self-signed server
   (`DEPTH_ZERO_SELF_SIGNED_CERT`) and against a public host (`✓ trusted`).
