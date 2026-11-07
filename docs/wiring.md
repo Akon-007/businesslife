@@ -73,3 +73,5 @@ mutation would be invisible to replay and unverifiable.
 - Guard: if extraction ever finds fewer than 15 literal routes or 8 regex routes it fails loudly instead of
   reporting a false pass.
 - `npm run verify:render` then proves the panels that consume those routes render from a real game state.
+- `npx playwright test` (CI job `e2e`) walks the real journeys in a real browser — the Instructor link, onboarding
+  into a scenario pack, and the industry lock — and runs axe over the landing, onboarding and instructor pages.

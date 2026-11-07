@@ -35,12 +35,14 @@ npm run verify:centres # payment runs, marketing mix, attribution and unit econo
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run verify:scenarios # scenario packs start, replay deterministically and score themselves
+npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`)
 npm run build           # production build
 npm run lint            # oxlint
 ```
 
 GitHub Actions runs the same suite on every push and pull request
-(`.github/workflows/verify.yml`): install, lint, typecheck, build, boot the API, `npm run verify`.
+(`.github/workflows/verify.yml`): install, lint, typecheck, build, boot the API, `npm run verify`. A second
+job installs Chromium and runs the Playwright journeys and the axe accessibility scan.
 
 ## Architecture notes
 

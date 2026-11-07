@@ -698,3 +698,24 @@ precedence, free play staying untagged, six-month determinism per pack (same pac
 run), the verdict recomputing every objective from state, and a JSON save round-trip keeping the scenario and
 its verdict. `verify:statements` now sweeps all eight industries (68 checks). The gate is **15 suites, 0
 failures**; wiring is 23/23 client calls resolved.
+
+### 9.18 Real-browser end-to-end and axe accessibility — **scaffolded, not yet executed**
+
+`verify:render` server-renders components from a real game state, and `verify:contrast` checks the token pairs
+the UI uses — but neither touches a browser, so focus order, accessible names produced by the DOM, and the
+actual click path were untested. This adds that layer:
+
+| File | What it does |
+|---|---|
+| `playwright.config.ts` | Chromium, one worker, starts the API and the Vite dev server itself (reusing running ones), traces and screenshots on failure |
+| `e2e/onboarding.spec.ts` | The Instructor link goes straight to `/lecturer`; a profile leads to the scenario picker; picking a pack shows its brief, window and objectives *and* collapses the industry grid to that pack's industry; clearing the chip restores free play |
+| `e2e/a11y.spec.ts` | axe-core (WCAG 2.0/2.1 A + AA) over the landing page, both onboarding steps and the instructor sign-in; `serious`/`critical` violations fail, `moderate` findings are printed for triage |
+| `scripts/verify-e2e.mjs` | `npm run verify:e2e` — runs the suite, or **skips with an explicit message** when no browser binary exists. It never reports a pass it did not earn |
+| `.github/workflows/verify.yml` | A second `e2e` job installs Chromium and runs `npx playwright test`, uploading the report on failure. Kept out of the `verify` job so the fast gate stays network-light |
+
+**Honest limitation.** The suite has never been executed: this development sandbox cannot reach Playwright's
+CDN (`npx playwright install chromium` fails with a download error), so no browser is available. What is proven
+here is that the specs compile and are discovered (7 tests in 2 files via `npx playwright test --list`), that the
+project is in the gate as a script, and that the skip path is truthful. The first real execution will be the CI
+`e2e` job on the next push. Until that run is green, this is scaffolding — **not** a verified accessibility
+result, and the audit should not be read as one.
