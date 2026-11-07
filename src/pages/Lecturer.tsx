@@ -21,6 +21,7 @@ import {
   clearSession,
   createClass,
   downloadRosterCsv,
+  fetchComparison,
   fetchReplay,
   fetchRoster,
   gradeStudent,
@@ -31,6 +32,7 @@ import {
   resetStudent,
   type Cohort,
   type RosterEntry,
+  type CohortComparison,
 } from '../lib/api'
 import { money, number } from '../lib/format'
 import { DEFAULT_RUBRIC, MIN_RATIONALE, RUBRIC, RUBRIC_LEVELS, localGrade, type RubricId, type RubricScores } from '../game/rubric'
@@ -66,6 +68,7 @@ export default function Lecturer() {
   const [classes, setClasses] = useState<Cohort[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
   const [roster, setRoster] = useState<RosterEntry[]>([])
+  const [comparison, setComparison] = useState<CohortComparison | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -177,8 +180,9 @@ export default function Lecturer() {
                     onClick={() => {
                       setSelectedId(cohort.id)
                       void run(async () => {
-                        const result = await fetchRoster(cohort.id)
+                        const [result, stats] = await Promise.all([fetchRoster(cohort.id), fetchComparison(cohort.id)])
                         setRoster(result.roster)
+                        setComparison(stats)
                       })
                     }}
                     className={clsx(
@@ -237,6 +241,7 @@ export default function Lecturer() {
                   run(async () => {
                     const result = await gradeStudent(selected.id, { studentId, grade, rationale, rubric, feedback: rationale })
                     setRoster(result.roster)
+                    setComparison(await fetchComparison(selected.id))
                   }, 'Grade and rationale recorded.')
                 }
                 onReset={(studentId) =>
@@ -259,6 +264,7 @@ export default function Lecturer() {
                   })
                 }
               />
+              {comparison ? <ComparisonCard comparison={comparison} /> : null}
             </>
           )}
         </section>
@@ -790,3 +796,174 @@ function Banner({ tone, icon: Icon, children }: { tone: 'good' | 'bad'; icon: ty
 
 const inputClass =
   'h-10 w-full rounded-xl border border-line bg-white px-2.5 text-[12px] text-ink outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100'
+
+/**
+ * Cohort comparison and the per-student profile over time.
+ *
+ * The roster answers "what did each student score"; this answers "where is the
+ * group strong, who is improving, and can the marks be trusted". Everything is
+ * derived server-side from the same roster and grade history the table shows, so
+ * the two cannot disagree.
+ */
+function ComparisonCard({ comparison }: { comparison: CohortComparison }) {
+  const graded = comparison.graded
+  const maxBucket = Math.max(1, ...comparison.buckets.map((bucket) => bucket.count))
+
+  return (
+    <section className="rounded-2xl border border-line bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Users className="size-4 text-brand-700" />
+          <p className="font-display text-[14px] font-semibold">Cohort comparison</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+          <span className="rounded-full bg-paper-3 px-2 py-0.5 text-ink-500">{comparison.size} enrolled</span>
+          <span className="rounded-full bg-paper-3 px-2 py-0.5 text-ink-500">{comparison.active} trading</span>
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-800">{graded} graded</span>
+          <span className="rounded-full bg-paper-3 px-2 py-0.5 text-ink-500">{comparison.rubricGraded} with rubric</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
+        <Stat label="Mean instructor grade" value={comparison.meanGrade === null ? '—' : `${comparison.meanGrade} / 100`} />
+        <Stat label="Mean engine score" value={comparison.meanEngineScore === null ? '—' : `${comparison.meanEngineScore} / 100`} />
+        <Stat
+          label="Marking delta"
+          value={comparison.meanDelta === null ? '—' : `${comparison.meanDelta > 0 ? '+' : ''}${comparison.meanDelta}`}
+          hint="instructor minus engine"
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-400">Competency profile (1–4 mean)</p>
+          <ul className="mt-2 space-y-1.5">
+            {comparison.competencies.map((competency) => (
+              <li key={competency.id}>
+                <div className="flex items-center justify-between text-[10.5px]">
+                  <span className="font-semibold text-ink-600">
+                    {competency.label} <span className="text-ink-400">· {competency.weight}%</span>
+                  </span>
+                  <span className="font-bold tabular-nums text-ink-700">
+                    {competency.mean === null ? '—' : competency.mean.toFixed(2)}
+                    {competency.proficientShare === null ? '' : ` · ${competency.proficientShare}% ≥ 3`}
+                  </span>
+                </div>
+                <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-paper-3">
+                  {[1, 2, 3, 4].map((level) => {
+                    const count = competency.distribution[level - 1] ?? 0
+                    const total = Math.max(1, competency.distribution.reduce((sum, value) => sum + value, 0))
+                    return count ? (
+                      <div
+                        key={level}
+                        title={`level ${level}: ${count}`}
+                        className={clsx('h-full', level === 1 ? 'bg-coral' : level === 2 ? 'bg-gold' : level === 3 ? 'bg-brand-400' : 'bg-brand-700')}
+                        style={{ width: `${(count / total) * 100}%` }}
+                      />
+                    ) : null
+                  })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-400">Engine score distribution</p>
+          <ul className="mt-2 space-y-1.5">
+            {comparison.buckets.map((bucket) => (
+              <li key={bucket.label} className="flex items-center gap-2">
+                <span className="w-12 shrink-0 text-[10px] font-bold tabular-nums text-ink-500">{bucket.label}</span>
+                <span className="h-2 flex-1 overflow-hidden rounded-full bg-paper-3">
+                  <span className="block h-full rounded-full bg-brand-500" style={{ width: `${(bucket.count / maxBucket) * 100}%` }} />
+                </span>
+                <span className="w-5 shrink-0 text-right text-[10px] font-bold tabular-nums text-ink-600">{bucket.count}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-3 grid grid-cols-2 gap-1.5 text-[9.5px] font-semibold text-ink-500">
+            <span>Integrity: {comparison.integrity.verified} verified</span>
+            <span>{comparison.integrity.flagged} flagged</span>
+            <span>Seed: {comparison.seedMatch.matched} matched</span>
+            <span>{comparison.seedMatch.different} different</span>
+            <span>Replay: {comparison.replay.match} reproduced</span>
+            <span>{comparison.replay.mismatch} mismatched</span>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-4 text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-400">Profiles over time</p>
+      {comparison.students.length === 0 ? (
+        <p className="mt-2 text-[11px] text-ink-500">No students yet. Invite a student to see their profile.</p>
+      ) : (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-[10.5px]">
+            <thead>
+              <tr className="text-[9px] uppercase tracking-[0.1em] text-ink-400">
+                <th className="pb-1 pr-2 font-bold">Student</th>
+                <th className="pb-1 pr-2 font-bold">Grade</th>
+                <th className="pb-1 pr-2 font-bold">Engine</th>
+                <th className="pb-1 pr-2 font-bold">Trend</th>
+                <th className="pb-1 font-bold">Latest competency levels</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparison.students.map((student) => (
+                <tr key={student.studentId} className="border-t border-line/70">
+                  <td className="py-1.5 pr-2">
+                    <span className="block font-semibold text-ink-700">{student.name}</span>
+                    <span className="block text-[9.5px] text-ink-400">{student.company ?? 'no company yet'}</span>
+                  </td>
+                  <td className="py-1.5 pr-2 font-bold tabular-nums text-ink-700">{student.grade ?? '—'}</td>
+                  <td className="py-1.5 pr-2 tabular-nums text-ink-500">{student.engineScore ?? '—'}</td>
+                  <td className="py-1.5 pr-2 tabular-nums">
+                    {student.trend === null ? (
+                      <span className="text-ink-400">—</span>
+                    ) : (
+                      <span className={student.trend >= 0 ? 'font-bold text-success-strong' : 'font-bold text-coral'}>
+                        {student.trend > 0 ? '+' : ''}
+                        {student.trend}
+                      </span>
+                    )}
+                    <span className="ml-1 text-[9px] text-ink-400">{student.history.length > 1 ? `${student.history.length} grades` : ''}</span>
+                  </td>
+                  <td className="py-1.5">
+                    {student.levels ? (
+                      <span className="flex gap-1">
+                        {RUBRIC.map((criterion) => (
+                          <span
+                            key={criterion.id}
+                            title={`${criterion.label}: ${student.levels?.[criterion.id] ?? '—'}`}
+                            className="inline-block h-1.5 w-5 rounded-full bg-paper-3 align-middle"
+                          >
+                            <span
+                              className="block h-full rounded-full bg-brand-600"
+                              style={{ width: `${((student.levels?.[criterion.id] ?? 0) / 4) * 100}%` }}
+                            />
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="text-[9.5px] text-ink-400">no rubric grade</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-xl bg-paper-3/70 px-3 py-2">
+      <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-400">{label}</p>
+      <p className="mt-0.5 font-display text-[15px] font-semibold tabular-nums text-ink">{value}</p>
+      {hint ? <p className="text-[9px] text-ink-400">{hint}</p> : null}
+    </div>
+  )
+}

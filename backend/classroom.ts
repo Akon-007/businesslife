@@ -1,5 +1,6 @@
 import type { ClassRoom, ClassroomRecord, Database } from './types.js'
 import { authorityOf, verifyChain } from './authority.js'
+import { RUBRIC, rubricGrade } from './rubric.js'
 
 export interface RosterEntry {
   studentId: string
@@ -168,5 +169,149 @@ export function scenarioStart(scenario: Record<string, unknown> | null): { start
     month: 0,
     day: 1,
     seed: Number.isFinite(seed) && seed > 0 ? Math.round(seed) : null,
+  }
+}
+
+type RUBRIC_ID = (typeof RUBRIC)[number]['id']
+
+export interface CompetencyStat {
+  id: string
+  label: string
+  weight: number
+  /** Mean level (1–4) across graded students who used the rubric. */
+  mean: number | null
+  /** How many students sit at each level, index 0 = level 1. */
+  distribution: number[]
+  /** Share of graded students at or above Proficient (3). */
+  proficientShare: number | null
+}
+
+export interface StudentProfile {
+  studentId: string
+  name: string
+  company: string | null
+  grade: number | null
+  engineScore: number | null
+  /** Latest 1–4 levels per competency, null when the grade was not a rubric grade. */
+  levels: Record<string, number> | null
+  /** Weighted grade of that latest rubric, so the profile can be checked. */
+  rubricGrade: number | null
+  /** Grade history, oldest first: { at, grade, engineScore }. */
+  history: { at: string; grade: number; engineScore: number | null }[]
+  /** Change in grade from the first recorded grade to the latest. */
+  trend: number | null
+}
+
+export interface CohortComparison {
+  classId: string
+  className: string
+  size: number
+  active: number
+  graded: number
+  rubricGraded: number
+  meanGrade: number | null
+  meanEngineScore: number | null
+  /** Mean instructor grade minus mean engine score: how generous the marking is. */
+  meanDelta: number | null
+  integrity: { verified: number; flagged: number; brokenChain: number; noData: number }
+  seedMatch: { matched: number; different: number; unknown: number }
+  replay: { match: number; mismatch: number; error: number; none: number }
+  /** Engine score buckets, the CV-shaped band an examiner can read at a glance. */
+  buckets: { label: string; min: number; max: number; count: number }[]
+  competencies: CompetencyStat[]
+  students: StudentProfile[]
+}
+
+const BUCKETS = [
+  { label: '0-39', min: 0, max: 39 },
+  { label: '40-54', min: 40, max: 54 },
+  { label: '55-69', min: 55, max: 69 },
+  { label: '70-84', min: 70, max: 84 },
+  { label: '85-100', min: 85, max: 100 },
+]
+
+const mean = (values: number[]) => (values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)) : null)
+
+/**
+ * A cohort read-out for the instructor: where the group sits, competence by
+ * competence, and each student's own profile over time.
+ *
+ * Everything here is derived from the roster and the recorded grade history —
+ * no separate store, so a comparison cannot drift from the marks it summarises.
+ */
+export function comparisonFor(database: Database, classroom: ClassRoom): CohortComparison {
+  const roster = rosterFor(database, classroom)
+  const graded = roster.filter((entry) => entry.grade !== null)
+  const rubricEntries = graded.filter((entry) => entry.rubric)
+
+  const competencies: CompetencyStat[] = RUBRIC.map((criterion) => {
+    const levels = rubricEntries
+      .map((entry) => entry.rubric?.[criterion.id])
+      .filter((level): level is number => typeof level === 'number' && level >= 1 && level <= 4)
+    const distribution = [1, 2, 3, 4].map((level) => levels.filter((value) => value === level).length)
+    return {
+      id: criterion.id,
+      label: criterion.label,
+      weight: criterion.weight,
+      mean: mean(levels),
+      distribution,
+      proficientShare: levels.length ? Number(((levels.filter((value) => value >= 3).length / levels.length) * 100).toFixed(1)) : null,
+    }
+  })
+
+  const grades = graded.map((entry) => entry.grade as number)
+  const engineScores = graded.map((entry) => entry.engineScoreAtGrade).filter((score): score is number => typeof score === 'number')
+
+  const students: StudentProfile[] = roster.map((entry) => {
+    const record = classroom.records?.find((item) => item.studentId === entry.studentId)
+    const history = (record?.history ?? []).map((item) => ({ at: item.gradedAt, grade: item.grade, engineScore: item.engineScore ?? null }))
+    const first = history[0]
+    const last = history[history.length - 1]
+    return {
+      studentId: entry.studentId,
+      name: entry.name,
+      company: entry.company,
+      grade: entry.grade,
+      engineScore: entry.engineScoreAtGrade ?? entry.score,
+      levels: entry.rubric ?? null,
+      rubricGrade: entry.rubric ? rubricGrade(entry.rubric as Record<RUBRIC_ID, 1 | 2 | 3 | 4>) : null,
+      history,
+      trend: history.length > 1 && first && last ? last.grade - first.grade : null,
+    }
+  })
+
+  return {
+    classId: classroom.id,
+    className: classroom.name,
+    size: roster.length,
+    active: roster.filter((entry) => entry.status === 'active' || entry.status === 'running').length,
+    graded: graded.length,
+    rubricGraded: rubricEntries.length,
+    meanGrade: mean(grades),
+    meanEngineScore: mean(engineScores),
+    meanDelta: grades.length && engineScores.length ? Number((mean(grades)! - mean(engineScores)!).toFixed(2)) : null,
+    integrity: {
+      verified: roster.filter((entry) => entry.integrity === 'verified').length,
+      flagged: roster.filter((entry) => entry.integrity === 'flagged').length,
+      brokenChain: roster.filter((entry) => entry.integrity === 'broken-chain').length,
+      noData: roster.filter((entry) => entry.integrity === 'no-data').length,
+    },
+    seedMatch: {
+      matched: roster.filter((entry) => entry.seedMatch === true).length,
+      different: roster.filter((entry) => entry.seedMatch === false).length,
+      unknown: roster.filter((entry) => entry.seedMatch === null).length,
+    },
+    replay: {
+      match: roster.filter((entry) => entry.replay === 'match').length,
+      mismatch: roster.filter((entry) => entry.replay === 'mismatch').length,
+      error: roster.filter((entry) => entry.replay === 'error').length,
+      none: roster.filter((entry) => entry.replay === 'none').length,
+    },
+    buckets: BUCKETS.map((bucket) => ({
+      ...bucket,
+      count: roster.filter((entry) => entry.score >= bucket.min && entry.score <= bucket.max).length,
+    })),
+    competencies,
+    students,
   }
 }

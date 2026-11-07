@@ -264,6 +264,51 @@ async function main() {
   const rubricRow = rubricCsv.text.trim().split('\n')[1] ?? ''
   check('CSV carries the rationale text', rubricRow.includes('Held receivables under control'), rubricRow.slice(0, 120))
 
+  console.log('\nCohort comparison and competency profiles')
+
+  const forbiddenComparison = await call(`/api/classes/${classId}/comparison`, { token: learner.token })
+  check('students cannot read the cohort comparison', forbiddenComparison.status === 403, `status ${forbiddenComparison.status}`)
+
+  const comparison = await call(`/api/classes/${classId}/comparison`, { token: instructor.token })
+  const stats = comparison.body ?? {}
+  check('instructor reads the cohort comparison', comparison.status === 200)
+  check('comparison covers all six competencies', (stats.competencies ?? []).length === 6, String((stats.competencies ?? []).length))
+  check(
+    'comparison carries the rubric weights',
+    (stats.competencies ?? []).map((item) => item.weight).join('/') === '25/20/15/15/15/10',
+    JSON.stringify((stats.competencies ?? []).map((item) => item.weight)),
+  )
+  check('comparison has five score buckets', (stats.buckets ?? []).length === 5)
+  check(
+    'bucket counts add up to the cohort, not the graded subset',
+    (stats.buckets ?? []).reduce((sum, bucket) => sum + bucket.count, 0) === stats.size,
+    `${(stats.buckets ?? []).reduce((sum, bucket) => sum + bucket.count, 0)} vs ${stats.size}`,
+  )
+  check('comparison counts the graded students', stats.graded >= 1 && stats.rubricGraded >= 1, `graded ${stats.graded}, rubric ${stats.rubricGraded}`)
+  check('comparison reports the mean instructor grade', stats.meanGrade === 78, String(stats.meanGrade))
+  check(
+    'the competency mean matches the recorded levels',
+    (stats.competencies ?? []).find((item) => item.id === 'finance')?.mean === 4 &&
+      (stats.competencies ?? []).find((item) => item.id === 'market')?.mean === 2,
+    JSON.stringify((stats.competencies ?? []).map((item) => [item.id, item.mean])),
+  )
+  check(
+    'the proficient share counts levels 3 and 4',
+    (stats.competencies ?? []).find((item) => item.id === 'market')?.proficientShare === 0 &&
+      (stats.competencies ?? []).find((item) => item.id === 'finance')?.proficientShare === 100,
+  )
+  const profile = (stats.students ?? [])[0] ?? {}
+  check('the student profile carries their latest levels', profile.levels?.finance === 4 && profile.levels?.market === 2, JSON.stringify(profile.levels))
+  check('the student profile recomputes the weighted grade', profile.rubricGrade === 78, String(profile.rubricGrade))
+  check('every grade is kept in the profile history', (profile.history ?? []).length >= 2, String((profile.history ?? []).length))
+  check(
+    'the trend compares the first and latest grade',
+    typeof profile.trend === 'number' && profile.trend === (profile.history ?? []).at(-1)?.grade - (profile.history ?? [])[0]?.grade,
+    `trend ${profile.trend} history ${JSON.stringify((profile.history ?? []).map((item) => item.grade))}`,
+  )
+  check('the comparison counts integrity verdicts', typeof stats.integrity?.verified === 'number')
+  check('the comparison counts replay verdicts', typeof stats.replay?.match === 'number')
+
   const reset = await call(`/api/classes/${classId}/reset`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id } })
   check('instructor resets a run', reset.status === 200 && reset.body?.authority?.score === 0, JSON.stringify(reset.body?.authority))
   check('reset restores the scenario seed', reset.body?.authority !== undefined && reset.body?.roster?.[0]?.seed === 424242, String(reset.body?.roster?.[0]?.seed))

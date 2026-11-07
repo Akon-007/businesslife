@@ -12,7 +12,7 @@ import { searchMarketplace, seedMarketplace } from './marketplace.js'
 import { IN_GAME_APPS } from './apps.js'
 import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthority, validateSnapshot, verifyChain, type RunSnapshot } from './authority.js'
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
-import { recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
+import { comparisonFor, recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
 import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
 import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
@@ -234,6 +234,10 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     const action = classMatch[2] ?? ''
     const lecturer = classroom.lecturerId === player.id && isInstructor(player)
     if (request.method === 'GET' && !action) { send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return }
+    if (request.method === 'GET' && action === 'comparison') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      send(response, 200, comparisonFor(database, classroom)); return
+    }
     if (request.method === 'GET' && (action === 'roster' || action === 'export.csv')) {
       const roster = rosterFor(database, classroom)
       if (action === 'export.csv') { sendFile(response, 200, 'text/csv; charset=utf-8', rosterCsv(classroom, roster), `${classroom.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-roster.csv`); return }
@@ -297,12 +301,20 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       if (!Number.isFinite(grade) || grade < 0 || grade > 100) { error(response, 400, 'Grade must be between 0 and 100.'); return }
 
       const record = recordFor(classroom, studentId)
+      const gradedAt = now()
+      const previousEngineScore = record.engineScoreAtGrade
       record.grade = grade
       record.feedback = String(input.feedback ?? rationale).slice(0, 1000)
       record.rubric = rubric ?? undefined
       record.rationale = rationale || undefined
       record.gradedBy = player.id
-      record.gradedAt = now()
+      record.gradedAt = gradedAt
+      // Grade history is what makes a competency profile over time possible: the
+      // latest rubric alone cannot show whether a student is improving.
+      record.history = [
+        ...(record.history ?? []),
+        { gradedAt, grade, engineScore: previousEngineScore, rubric: rubric ?? undefined, rationale: rationale || undefined },
+      ].slice(-20)
       const company = database.companies.filter((item) => item.playerId === studentId).pop()
       if (company) {
         const engineScore = authorityOf(company).score

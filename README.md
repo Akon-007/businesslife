@@ -176,7 +176,9 @@ the same objectives; the run-end screen and the scorecard PDF print which object
 
 Grading uses `GET /api/rubric`: financial acumen (25%), strategy & priorities (20%), operational
 execution (15%), market & customer (15%), leadership & team (15%), ethics & governance (10%), each
-scored 1–4 and weighted into the 0–100 grade. Legacy four-criterion grades are still accepted with a
+scored 1–4 and weighted into the 0–100 grade. The portal also shows a **cohort comparison** — mean grade,
+marking delta, competency means and distributions, score bands, integrity and replay counts — and a per-student
+**competency profile over time** built from the grade history. Legacy four-criterion grades are still accepted with a
 documented mapping, and a rubric grade is rejected unless every criterion is present and a rationale
 of at least 40 characters is supplied. The stored record keeps the levels, the rationale, the engine score at
 grading time and the resulting delta; the audit chain receives a SHA-256 digest of the rationale.

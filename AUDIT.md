@@ -733,3 +733,34 @@ than locally. It found real defects on the way, and each was fixed rather than s
 
 **Verified.** The `e2e` job is green on PR #5: 7 tests, 4 axe scans, no serious or critical violations on any
 page audited.
+
+### 9.19 Cohort comparison and competency profiles over time — **implemented**
+
+Grades answered "what did this student get". They could not answer "where is this cohort weak", "who is
+improving", or "how generous is my marking" — the questions an examiner or a programme lead actually asks.
+
+**Grade history.** `ClassroomRecord` now keeps the last 20 grades (`history[]`: timestamp, grade, engine score
+at grading time, rubric levels, rationale). The latest rubric alone cannot show development; a sequence can.
+Existing records simply have no history until their next grade, so nothing is migrated or invented.
+
+**`GET /api/classes/:id/comparison`** (instructor only — students get 403) is derived entirely from the roster
+and that history, so the summary cannot drift from the marks it summarises:
+
+| Section | Content |
+|---|---|
+| Headline | cohort size, students trading, graded count, rubric-graded count |
+| Scoring | mean instructor grade, mean engine score, **marking delta** (instructor minus engine) |
+| Competencies | per competency: mean level 1–4, level distribution, share at or above Proficient (≥3) |
+| Distribution | engine score in five bands (0–39, 40–54, 55–69, 70–84, 85–100) |
+| Trust | integrity counts (verified / flagged / broken chain), seed matches, replay verdicts |
+| Profiles | per student: latest levels, recomputed weighted grade, grade history and the first-to-latest trend |
+
+**UI.** `ComparisonCard` in the instructor portal renders all of it: competency bars stacked by level, the score
+band chart, the trust counts, and a per-student table with a trend figure and six mini level bars. It loads with
+the roster and refreshes after every grade, so the panel and the table below it always describe the same marks.
+
+**Verification.** `verify:api` gained 16 checks (97 total, 0 failures): students are refused, the six competencies
+and their 25/20/15/15/15/10 weights are present, bucket counts sum to the cohort rather than the graded subset,
+the competency means and proficient shares match recorded levels, the profile recomputes the weighted grade,
+every grade is retained in history, and the trend equals latest minus first. Wiring is now **24/24** client calls
+resolved.

@@ -241,6 +241,14 @@ export interface ClassRoom {
   records?: ClassroomRecord[]
 }
 
+export interface GradeHistoryEntry {
+  gradedAt: string
+  grade: number
+  engineScore?: number
+  rubric?: Record<string, number>
+  rationale?: string
+}
+
 export interface ClassroomRecord {
   studentId: Id
   grade?: number
@@ -255,6 +263,8 @@ export interface ClassroomRecord {
   gradedAt?: string
   resetAt?: string
   assignedAt?: string
+  /** Every grade this student has received in this cohort, oldest first. */
+  history?: GradeHistoryEntry[]
 }
 
 export interface AuthorityViolation {

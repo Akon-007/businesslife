@@ -361,6 +361,50 @@ export function fetchRoster(classId: string): Promise<{ class: Cohort; roster: R
   return request(`/api/classes/${classId}/roster`, { scope: 'instructor' })
 }
 
+export interface CompetencyStat {
+  id: string
+  label: string
+  weight: number
+  mean: number | null
+  distribution: number[]
+  proficientShare: number | null
+}
+
+export interface StudentProfile {
+  studentId: string
+  name: string
+  company: string | null
+  grade: number | null
+  engineScore: number | null
+  levels: Record<string, number> | null
+  rubricGrade: number | null
+  history: { at: string; grade: number; engineScore: number | null }[]
+  trend: number | null
+}
+
+export interface CohortComparison {
+  classId: string
+  className: string
+  size: number
+  active: number
+  graded: number
+  rubricGraded: number
+  meanGrade: number | null
+  meanEngineScore: number | null
+  meanDelta: number | null
+  integrity: { verified: number; flagged: number; brokenChain: number; noData: number }
+  seedMatch: { matched: number; different: number; unknown: number }
+  replay: { match: number; mismatch: number; error: number; none: number }
+  buckets: { label: string; min: number; max: number; count: number }[]
+  competencies: CompetencyStat[]
+  students: StudentProfile[]
+}
+
+/** Cohort-level comparison and per-student competency profiles. */
+export function fetchComparison(classId: string): Promise<CohortComparison> {
+  return request(`/api/classes/${classId}/comparison`, { scope: 'instructor' })
+}
+
 export function gradeStudent(
   classId: string,
   payload: { studentId: string; grade?: number; feedback?: string; rationale?: string; rubric?: Record<string, number> },
