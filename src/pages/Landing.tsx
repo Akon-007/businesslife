@@ -171,7 +171,11 @@ function Hero() {
                 <p className="text-[12px] font-bold text-ink">Meridian City is open</p>
                 <p className="text-[10.5px] text-ink-500">Tap any landmark to see what happens there.</p>
               </div>
-              <Link to="/play" className="grid size-8 place-items-center rounded-full bg-white text-ink shadow-sm transition hover:bg-brand-50">
+              <Link
+                to="/play"
+                aria-label="Open Meridian City and start a company"
+                className="grid size-8 place-items-center rounded-full bg-white text-ink shadow-sm transition hover:bg-brand-50"
+              >
                 <ArrowRight className="size-3.5" />
               </Link>
             </div>

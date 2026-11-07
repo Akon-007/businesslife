@@ -123,7 +123,7 @@ export function CityMap({
             {interactive ? (
               <button
                 type="button"
-                aria-label={`${landmark.label}. ${landmark.description}`}
+                aria-label={[landmark.short, landmark.label, landmark.description, badge?.label].filter(Boolean).join('. ')}
                 onClick={() => onSelect?.(landmark.id)}
                 className={clsx(
                   'group relative flex flex-col items-center outline-offset-8 transition-transform duration-300 hover:-translate-y-1.5',
