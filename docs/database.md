@@ -43,13 +43,21 @@ storage: postgres (DATABASE_URL)
    Prefer exporting it by hand? `export SUPABASE_DB_URL=…` works identically.
    Never commit it: `.env` is in `.gitignore`.
 
-5. Create the tables (idempotent, safe on every deploy):
+5. Sanity-check the string before it touches the network — this catches the two
+   usual mistakes, pasting the project URL or an API key from the page next to
+   the connection string:
+
+   ```bash
+   npm run db:smoke -- --check 'postgresql://postgres.abcdefgh:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require'
+   ```
+
+6. Create the tables (idempotent, safe on every deploy):
 
    ```bash
    npm run db:migrate
    ```
 
-6. Prove it, from a machine that can reach Supabase:
+7. Prove it, from a machine that can reach Supabase:
 
    ```bash
    npm run db:smoke
@@ -63,7 +71,7 @@ storage: postgres (DATABASE_URL)
    version, **whether the `anon` role can read anything**, and does a
    write/read/delete with timings.
 
-7. Start the API. The boot log must say `storage: postgres (DATABASE_URL)`.
+8. Start the API. The boot log must say `storage: postgres (DATABASE_URL)`.
    Then `npm run dev` for the UI: nothing in the frontend talks to Supabase —
    the browser only ever calls `/api` on the API, so no key reaches the bundle.
 

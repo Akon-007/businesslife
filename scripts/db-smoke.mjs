@@ -22,16 +22,23 @@ if (existsSync(envFile)) {
 }
 
 const url = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
+
+const checkFlag = process.argv.indexOf('--check')
+if (checkFlag !== -1) {
+  const candidate = (process.argv[checkFlag + 1] ?? url ?? '').trim()
+  process.exit(checkConnectionString(candidate) === 0 ? 0 : 1)
+}
+
+if (!url) {
+  console.error('\nNo database URL. Set SUPABASE_DB_URL (or DATABASE_URL), or check one with:\n')
+  console.error("  npm run db:smoke -- --check 'postgresql://postgres.<ref>:<password>@<host>:<port>/postgres?sslmode=require'\n")
+  process.exit(1)
+}
 let failures = 0
 const warn = (label) => console.log(`  ! ${label}`)
 const ok = (label, pass, detail = '') => {
   console.log(`  ${pass ? '✓' : '✗'} ${label}${pass || !detail ? '' : ` — ${detail}`}`)
   if (!pass) failures += 1
-}
-
-if (!url) {
-  console.error('\nNo database URL. Set SUPABASE_DB_URL (or DATABASE_URL) and retry.\n')
-  process.exit(1)
 }
 
 const expectations = [
@@ -104,6 +111,89 @@ function describe(error) {
   const code = error && error.code ? ` (${error.code})` : ''
   return `${error instanceof Error ? error.message : String(error)}${code}`
 }
+/**
+ * `--check '<string>'` validates a connection string without touching the network.
+ * Useful straight after copying it out of the dashboard, before the first connect.
+ */
+function checkConnectionString(candidate) {
+  console.log('\nConnection string check\n')
+  let problems = 0
+  const bad = (label, hint = '') => {
+    problems += 1
+    console.log(`  ✗ ${label}`)
+    if (hint) console.log(`    ${hint}`)
+  }
+  const good = (label) => console.log(`  ✓ ${label}`)
+  const soft = (label) => console.log(`  ! ${label}`)
+
+  if (!candidate) {
+    console.log("  ✗ nothing passed. Try: npm run db:smoke -- --check 'postgresql://…'\n")
+    process.exit(1)
+  }
+  if (/^https?:\/\//i.test(candidate)) {
+    bad('that is the project URL (https://<ref>.supabase.co), not a database connection string.',
+      'Settings -> Database -> Connection string -> URI is the one the app needs.')
+    return problems
+  }
+  if (/^sb_(publishable|secret)_/i.test(candidate) || /^eyJ[\w-]{10,}\./.test(candidate)) {
+    bad('that is an API key (anon / publishable / service role).',
+      'This app talks to Postgres directly and never uses an API key. You need the postgresql:// URI.')
+    return problems
+  }
+  if (!/^postgres(ql)?:\/\//i.test(candidate)) {
+    bad('a connection string starts with postgresql://')
+    return problems
+  }
+  if (/\[?YOUR[-_ ]?PASSWORD\]?/i.test(candidate)) {
+    bad('the password is still the placeholder.',
+      'Replace it with the database password (Settings -> Database -> Reset database password if you never saved it).')
+  }
+
+  let parts
+  try {
+    parts = new URL(candidate)
+  } catch {
+    bad('that does not parse as a URL — a stray space or an unencoded character will do it.',
+      'Percent-encode the password: @ -> %40, # -> %23, : -> %3A, / -> %2F, ? -> %3F')
+    return problems
+  }
+
+  const host = parts.hostname
+  const port = Number(parts.port || 5432)
+  const user = decodeURIComponent(parts.username)
+  const pooler = /pooler\.supabase\.com$/.test(host)
+  const direct = /^db\.[a-z0-9]+\.supabase\.co$/i.test(host)
+
+  if (parts.password === '') bad('no password in the URL.', 'postgresql://postgres.<ref>:<password>@<host>:<port>/postgres')
+  else if (/%[0-9a-f]{0,1}$|%[^0-9a-f]/i.test(parts.password)) bad('the password has a broken percent-escape.', 'Write a literal % as %25.')
+
+  if (pooler && !user.includes('.')) {
+    bad(`pooler user "${user}" is missing the project ref.`, 'Through the pooler the user is postgres.<project-ref>, e.g. postgres.abcdefghijklmnop.')
+  }
+  if (direct && port === 5432) soft('direct connection: IPv6-only on new projects. If it hangs or refuses, switch to the pooler host.')
+  if (!pooler && !direct && /supabase/i.test(host)) soft(`unrecognised Supabase host "${host}" — copy it from the dashboard instead of typing it.`)
+  if (port !== 5432 && port !== 6543) soft(`port ${port} is unusual; Supabase uses 5432 (session/direct) or 6543 (transaction).`)
+  if (port === 6543) soft('transaction mode: fine for the app, but run db:migrate on 5432.')
+
+  const sslmode = parts.searchParams.get('sslmode')
+  if (!sslmode) soft('no ?sslmode=require — it is implied, but say it.')
+  else if (sslmode === 'disable') soft('sslmode=disable turns TLS off. Supabase requires TLS.')
+  else good(`TLS: sslmode=${sslmode}`)
+  if (parts.searchParams.get('pgbouncer') === 'true' && port !== 6543) soft('pgbouncer=true is only needed for the transaction pooler.')
+
+  if (problems === 0) {
+    good(`host ${host}:${port}${pooler ? ' (Supavisor)' : direct ? ' (direct)' : ''}`)
+    good(`user ${user}`)
+    good(`database ${parts.pathname.replace(/^\//, '') || 'postgres'}`)
+    console.log('\n  Looks usable. Next:\n')
+    console.log('    npm run db:migrate')
+    console.log('    npm run db:smoke\n')
+  }
+  return problems
+}
+
+
+
 const client = new pg.Client({ connectionString: normalise(url), ssl, connectionTimeoutMillis: 20_000, application_name: 'businesslife-smoke' })
 
 try {

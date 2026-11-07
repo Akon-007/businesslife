@@ -11,7 +11,7 @@
     "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify": "node scripts/verify-integrity.mjs && node scripts/verify-auth.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-determinism.ts && npx tsx scripts/verify-cash-timing.ts && node scripts/verify-contrast.mjs && node scripts/verify-wiring.mjs && npx tsx scripts/verify-pdf.ts && npx tsx scripts/verify-statements.ts && npx tsx scripts/verify-render.tsx && npx tsx scripts/verify-centres.ts && npx tsx scripts/verify-replay.ts && npx tsx scripts/verify-legit-play.ts && npx tsx scripts/verify-scenarios.ts && npx tsx scripts/verify-db.ts",
+    "verify": "node scripts/verify-integrity.mjs && node scripts/verify-auth.mjs && npx tsx scripts/verify-scoring.ts && npx tsx scripts/verify-determinism.ts && npx tsx scripts/verify-cash-timing.ts && node scripts/verify-contrast.mjs && node scripts/verify-wiring.mjs && npx tsx scripts/verify-pdf.ts && npx tsx scripts/verify-statements.ts && npx tsx scripts/verify-render.tsx && npx tsx scripts/verify-centres.ts && npx tsx scripts/verify-replay.ts && npx tsx scripts/verify-legit-play.ts && npx tsx scripts/verify-scenarios.ts && node scripts/verify-db-url.mjs && npx tsx scripts/verify-db.ts",
     "verify:api": "node scripts/verify-integrity.mjs",
     "verify:auth": "node scripts/verify-auth.mjs",
     "verify:scoring": "npx tsx scripts/verify-scoring.ts",
@@ -30,6 +30,7 @@
     "e2e": "playwright test",
     "e2e:report": "playwright show-report",
     "verify:db": "npx tsx scripts/verify-db.ts",
+    "verify:db-url": "node scripts/verify-db-url.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:smoke": "node scripts/db-smoke.mjs"
   },

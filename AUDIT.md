@@ -920,6 +920,14 @@ and `db:migrate` used to die with a raw stack trace when the connection failed
 (now a one-line cause plus the four realistic ones: wrong password, IPv6-only
 direct host, paused project, wrong region).
 
+**The string people actually copy.** The first attempt at connecting produced the
+*project URL* and a publishable key — the panel next to the connection string — which
+are meaningless to a Postgres driver. `npm run db:smoke -- --check '<string>'`
+diagnoses a candidate offline and names the mistake: project URL, anon/publishable/
+service key, untouched `[YOUR-PASSWORD]`, a pooler user without `postgres.<ref>`, a
+broken percent-escape, a missing `sslmode`. Nine cases are pinned in
+`scripts/verify-db-url.mjs` inside `npm run verify`, so the advice cannot rot.
+
 **Tooling.** `npm run db:smoke` now detects the provider and pooler mode from the
 URL, warns when `sslmode` is omitted or when a migration is pointed at the
 transaction pooler, checks TLS, the 12 tables, the schema version and anon
