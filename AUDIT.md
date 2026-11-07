@@ -24,7 +24,7 @@
 
 **Headline:** this is a **strong, playable single-player prototype of a business simulator** with a genuinely modelled monthly economy — but it is **not** the product described in the scope. The PDF specifies an AI-enabled, server-authoritative, institution-facing platform (LLM stakeholders, RBAC, lecturer portal, multiplayer, reproducible scenarios, statements, exports). What exists is a polished client-side web game with an under-used backend and no AI, no instructor surface, no multiplayer and no test coverage.
 
-**Coverage of the scope document: ~80% implemented, ~14% partial, ~6% absent** — weighted across simulation,
+**Coverage of the scope document: ~83% implemented, ~13% partial, ~4% absent** — weighted across simulation,
 assessment tooling, integration, interface, verification and hardening; the MVP acceptance criteria (§16.2) now
 stand at **12 pass / 1 partial / 0 fail** (see §4). The remainder is concentrated in the places §6 names: a
 server-owned simulation, granular roles/RBAC, a real database, and the unbuilt §6.11 governance surface.
