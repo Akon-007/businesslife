@@ -87,7 +87,14 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: End-to-end and accessibility
-        run: npx playwright test
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
+        run: npx playwright test --reporter=list,json
+
+      - name: Annotate failures
+        if: failure()
+        continue-on-error: true
+        run: node scripts/e2e-summary.mjs
 
       - name: Upload Playwright report
         if: failure()
