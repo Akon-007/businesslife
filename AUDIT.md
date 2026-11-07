@@ -644,3 +644,57 @@ pointing at its own object), the figures on the page are the figures in the run,
 `( ) \` is correct, filenames cannot escape the download directory, the client and server rubric lists match, and
 the six weights sum to 100 with the boundary grades (25/75/100). `verify:api` now asserts six criteria from
 `/api/rubric`, the 25/20/15/15/15/10 weights, a six-entry breakdown, legacy acceptance and the six CSV columns.
+
+### 9.17 Scenario packs, four more industries, and an accounting bug the wider sweep found — **implemented**
+
+**Industries (§ scope: "manufacturing, agriculture, health, education").** `IndustryId` went from four to
+eight, each with its own demand, price, cost per customer, elasticity, inventory flag, seasonality and credit
+terms:
+
+| Industry | Starting cash | Starting customers | Price | Valuation multiple | Inventory | Credit terms |
+|---|---|---|---|---|---|---|
+| Manufacturing | ₦240 000 | 6 | ₦1 400 | 4.5× | yes | 50% on 45 days |
+| Agriculture | ₦190 000 | 22 | ₦420 | 3.0× | yes | 30% on 30 days |
+| Health & wellness | ₦220 000 | 14 | ₦950 | 5.0× | no | 40% on 30 days |
+| Education & training | ₦165 000 | 55 | ₦190 | 3.4× | no | 10% on 15 days |
+
+Each also carries its own supplier pool, competitor pool, marketing-channel fit and icon, and each appears in
+the instructor scenario form and the backend industry allow-list (`backend/replay.ts`) — that allow-list is what
+the server replay validates a saved run against, so a new industry that skipped it would have failed replay.
+
+**Scenarios as data (§11.1).** `src/game/scenarios.ts` holds eight packs, each a *starting position plus a small
+set of objectives*, never a fork of the engine:
+
+| Pack | Industry | Difficulty | Window | Theme |
+|---|---|---|---|---|
+| The cash crunch | Retail | hardcore | 6 months | Survive on shrinking runway |
+| The growth engine | SaaS | standard | 9 | Spend into demand without losing the plot |
+| The capacity wall | Logistics | standard | 8 | Growth meets a hard ceiling |
+| The harvest | Agriculture | hardcore | 6 | Seasonal revenue, lumpy cash |
+| Clinic trust | Health | standard | 9 | Quality and reputation over volume |
+| Factory floor | Manufacturing | hardcore | 6 | Lead times, payables, working capital |
+| First cohort | Education | guided | 6 | A gentle first run |
+| Table for two | Restaurant | standard | 6 | Thin margins, high churn |
+
+A pack sets industry, strategy, difficulty, seed, starting cash, starting customers, optional price and debt;
+`startGame({ scenarioId })` applies them and tags the run (`game.scenario`) with the id, title, window and
+**`ruleVersion` ('2026.11')** so an old grade stays interpretable after a rule change. Objectives are measured
+from state the engine already produces — cash, customers, reputation, quality, net profit, valuation, months
+survived, contracts — so the debrief cannot disagree with the run. The verdict appears in the run-end modal and
+on the scorecard PDF; the instructor panel's "Start from a scenario pack" select fills every field of the
+existing custom-scenario form and persists `packId`, which the student's onboarding then locks to.
+
+**The bug.** Widening `verify-statements` from four industries to all eight immediately failed manufacturing:
+the balance sheet was off by ₦54 every month. The cause was real — closing stock is valued as
+`round(units × unit cost)` while COGS is expensed from a separate customer-count formula, and when the valuation
+implied *more* stock was consumed than had been expensed, `Math.max(0, cogs + inventoryDelta)` clamped the
+purchase figure to zero and the shortfall vanished: inventory left the sheet and equity survived it. The fix
+books that residual as COGS (`bookedCogs`), so assets and equity move together. This is exactly the class of
+defect that only appears when coverage widens — it had been invisible in the four original industries.
+
+**Verification.** New suite `verify:scenarios` (108 checks): pack schema (unique ids/seeds, all eight industries
+covered, windows 4–12 months, 3–5 objectives per pack, metrics and targets well formed), pack-overrides-caller
+precedence, free play staying untagged, six-month determinism per pack (same pack + same decisions = same
+run), the verdict recomputing every objective from state, and a JSON save round-trip keeping the scenario and
+its verdict. `verify:statements` now sweeps all eight industries (68 checks). The gate is **15 suites, 0
+failures**; wiring is 23/23 client calls resolved.

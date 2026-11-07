@@ -265,6 +265,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         // The seed is what makes the cohort comparable: every student gets the
         // same market, the same starting conditions and the same event stream.
         seed: scenarioSeed(input.seed),
+        packId: input.packId ? String(input.packId).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) || null : null,
         assignedAt: now(),
         assignedBy: player.id,
       }

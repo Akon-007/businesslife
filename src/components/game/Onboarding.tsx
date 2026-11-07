@@ -5,14 +5,17 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  Factory,
   Check,
   ChevronRight,
   GraduationCap,
+  HeartPulse,
   Info,
   LineChart,
   Megaphone,
   Rocket,
   Shuffle,
+  Sprout,
   Store,
   Target,
   Trash2,
@@ -22,6 +25,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { CityMap } from '../city/CityMap'
+import { SCENARIOS, scenarioById } from '../../game/scenarios'
 import { Logo } from '../ui/Logo'
 import { buttonClass } from '../ui/Button'
 import { DIFFICULTIES, FOUNDER_BACKGROUNDS, INDUSTRIES, STRATEGIES } from '../../game/data'
@@ -30,7 +34,16 @@ import { checkCompanyName, myCohorts, type StudentCohort } from '../../lib/api'
 import { money, number } from '../../lib/format'
 import type { DifficultyId, FounderBackgroundId, IndustryId, StrategyId } from '../../game/types'
 
-const INDUSTRY_ICONS = { saas: Building2, fnb: Store, retail: Wallet, logistics: Truck } as const
+const INDUSTRY_ICONS = {
+  saas: Building2,
+  fnb: Store,
+  retail: Wallet,
+  logistics: Truck,
+  manufacturing: Factory,
+  agriculture: Sprout,
+  healthcare: HeartPulse,
+  education: GraduationCap,
+} as const
 
 const BACKGROUND_ICONS = { operator: Wrench, builder: Building2, seller: Megaphone, analyst: LineChart } as const
 
@@ -84,6 +97,7 @@ export function Onboarding() {
   const [background, setBackground] = useState<FounderBackgroundId>('operator')
   const [difficulty, setDifficulty] = useState<DifficultyId>('standard')
   const [cohort, setCohort] = useState<StudentCohort | null>(null)
+  const [packId, setPackId] = useState<string | null>(null)
 
   // A student enrolled in a cohort starts on the instructor's scenario: same
   // seed, same starting capital, same market — so runs are comparable.
@@ -103,12 +117,16 @@ export function Onboarding() {
     return () => { cancelled = true }
   }, [])
 
-  const scenarioSeed = Number(cohort?.scenario?.seed ?? 0) || undefined
-  const scenarioCash = Number(cohort?.scenario?.startingCash ?? 0) || undefined
+  const cohortPackId = (cohort?.scenario as { packId?: string | null } | null)?.packId ?? null
+  const pack = useMemo(() => scenarioById(packId ?? cohortPackId), [packId, cohortPackId])
+  const scenarioSeed = pack ? pack.seed : Number(cohort?.scenario?.seed ?? 0) || undefined
+  const scenarioCash = pack ? pack.startingCash : Number(cohort?.scenario?.startingCash ?? 0) || undefined
+  const locked = Boolean(cohort?.scenario)
+  const activeIndustry: IndustryId = pack ? pack.industry : industry
 
   const shuffleCompany = () => setCompany(COMPANY_IDEAS[Math.floor(Math.random() * COMPANY_IDEAS.length)])
 
-  const industryDef = useMemo(() => INDUSTRIES.find((item) => item.id === industry)!, [industry])
+  const industryDef = useMemo(() => INDUSTRIES.find((item) => item.id === activeIndustry)!, [activeIndustry])
   const strategyDef = useMemo(() => STRATEGIES.find((item) => item.id === strategy)!, [strategy])
   const backgroundDef = useMemo(() => FOUNDER_BACKGROUNDS.find((item) => item.id === background)!, [background])
   const difficultyDef = useMemo(() => DIFFICULTIES.find((item) => item.id === difficulty)!, [difficulty])
@@ -146,12 +164,13 @@ export function Onboarding() {
       company: company.trim(),
       problem: problem.trim(),
       solution: solution.trim(),
-      industry,
-      strategy: 'product',
+      industry: activeIndustry,
+      strategy: pack?.strategy ?? 'product',
       founderBackground: 'operator',
-      difficulty,
+      difficulty: pack?.difficulty ?? difficulty,
       seed: scenarioSeed,
       startingCash: scenarioCash,
+      scenarioId: pack?.id,
     })
   }
 
@@ -258,7 +277,80 @@ export function Onboarding() {
                             </div>
                           </div>
                         ) : null}
-                        <div><p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">1 · Choose your industry</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{INDUSTRIES.map((item) => { const Icon = INDUSTRY_ICONS[item.id]; return <button key={item.id} type="button" onClick={() => setIndustry(item.id)} className={clsx('flex items-center gap-2.5 rounded-2xl border p-3 text-left transition', industry === item.id ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-300' : 'border-line bg-white hover:border-brand-300')}><span className="grid size-8 place-items-center rounded-xl bg-paper-3 text-ink-600"><Icon className="size-4" /></span><span><span className="block text-[12px] font-bold text-ink">{item.name}</span><span className="block text-[9.5px] text-ink-400">{item.tagline}</span></span></button> })}</div></div>
+                        {!locked ? (
+                          <div>
+                            <p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">0 · Play a scenario, or play free</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setPackId(null)}
+                                className={clsx(
+                                  'rounded-full border px-3 py-1.5 text-[10.5px] font-bold transition',
+                                  packId === null ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink-500 hover:border-ink-300',
+                                )}
+                              >
+                                Free play
+                              </button>
+                              {SCENARIOS.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setPackId(item.id)}
+                                  className={clsx(
+                                    'rounded-full border px-3 py-1.5 text-[10.5px] font-bold transition',
+                                    packId === item.id ? 'border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-300' : 'border-line bg-white text-ink-500 hover:border-brand-300',
+                                  )}
+                                >
+                                  {item.title}
+                                </button>
+                              ))}
+                            </div>
+                            {pack ? (
+                              <div className="mt-2 rounded-2xl border border-brand-300 bg-brand-50/60 p-3">
+                                <p className="text-[11.5px] leading-relaxed text-ink-700">{pack.brief}</p>
+                                <p className="mt-2 text-[9.5px] font-bold uppercase tracking-[0.12em] text-brand-800">
+                                  {pack.months}-month window · {pack.difficulty} · seed #{pack.seed}
+                                </p>
+                                <ul className="mt-1.5 space-y-0.5">
+                                  {pack.objectives.map((objective) => (
+                                    <li key={objective.id} className="text-[10px] leading-snug text-ink-600">
+                                      · {objective.label}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div>
+                          <p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">
+                            1 · {pack ? 'Industry (set by the scenario)' : 'Choose your industry'}
+                          </p>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {INDUSTRIES.filter((item) => !pack || item.id === pack.industry).map((item) => {
+                              const Icon = INDUSTRY_ICONS[item.id]
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => !pack && setIndustry(item.id)}
+                                  disabled={Boolean(pack)}
+                                  className={clsx(
+                                    'flex items-center gap-2.5 rounded-2xl border p-3 text-left transition',
+                                    activeIndustry === item.id ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-300' : 'border-line bg-white hover:border-brand-300',
+                                    pack && 'cursor-default',
+                                  )}
+                                >
+                                  <span className="grid size-8 place-items-center rounded-xl bg-paper-3 text-ink-600"><Icon className="size-4" /></span>
+                                  <span>
+                                    <span className="block text-[12px] font-bold text-ink">{item.name}</span>
+                                    <span className="block text-[9.5px] text-ink-400">{item.tagline}</span>
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
                         <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">2 · Identify a problem worth solving</span><textarea value={problem} onChange={(event) => setProblem(event.target.value)} required maxLength={240} placeholder="What frustrating customer problem have you noticed?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
                         <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">3 · Propose a solution</span><textarea value={solution} onChange={(event) => setSolution(event.target.value)} required maxLength={240} placeholder="What will you offer that makes the problem better?" className="mt-2 min-h-24 w-full rounded-2xl border border-line bg-white px-4 py-3 text-[13px] text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" /></label>
                         <label className="block"><span className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-ink-400">4 · Pick a business name</span><input value={company} onChange={(event) => { setCompany(event.target.value); setNameError('') }} required maxLength={40} placeholder="Your unique business name" className="mt-2 h-13 w-full rounded-2xl border border-line bg-white px-4 font-display text-[17px] font-semibold text-ink outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100" />{nameError && <p className="mt-2 text-[10.5px] font-semibold text-coral">{nameError}</p>}{checkingName && <p className="mt-2 text-[10.5px] font-semibold text-ink-400">Checking name availability…</p>}</label>

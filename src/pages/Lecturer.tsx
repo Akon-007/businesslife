@@ -34,12 +34,17 @@ import {
 } from '../lib/api'
 import { money, number } from '../lib/format'
 import { DEFAULT_RUBRIC, MIN_RATIONALE, RUBRIC, RUBRIC_LEVELS, localGrade, type RubricId, type RubricScores } from '../game/rubric'
+import { SCENARIOS, scenarioById } from '../game/scenarios'
 
 const INDUSTRIES = [
   { id: 'saas', label: 'Technology / SaaS' },
   { id: 'fnb', label: 'Restaurant & hospitality' },
   { id: 'retail', label: 'Retail & e-commerce' },
   { id: 'logistics', label: 'Logistics & transport' },
+  { id: 'manufacturing', label: 'Manufacturing' },
+  { id: 'agriculture', label: 'Agriculture & agri-processing' },
+  { id: 'healthcare', label: 'Health & wellness' },
+  { id: 'education', label: 'Education & training' },
 ]
 
 const REPLAY_COPY: Record<RosterEntry['replay'], { label: string; tone: string; title: string }> = {
@@ -407,6 +412,20 @@ function ScenarioCard({
   const [months, setMonths] = useState(String(current?.months ?? 12))
   const [objectives, setObjectives] = useState((current?.objectives ?? ['Reach break-even', 'Hold churn under 5%']).join('\n'))
   const [seed, setSeed] = useState(current?.seed ? String(current.seed) : '')
+  const [packId, setPackId] = useState<string>((current as { packId?: string | null } | null)?.packId ?? '')
+
+  function applyPack(id: string) {
+    setPackId(id)
+    const chosen = scenarioById(id)
+    if (!chosen) return
+    setTitle(chosen.title)
+    setIndustry(chosen.industry)
+    setDifficulty(chosen.difficulty)
+    setStartingCash(String(chosen.startingCash))
+    setMonths(String(chosen.months))
+    setSeed(String(chosen.seed))
+    setObjectives(chosen.objectives.map((objective) => objective.label).join('\n'))
+  }
 
   return (
     <section className="rounded-2xl border border-line bg-white p-4">
@@ -422,6 +441,7 @@ function ScenarioCard({
         onSubmit={(event) => {
           event.preventDefault()
           onAssign({
+            packId: packId || null,
             title,
             industry,
             difficulty,
@@ -433,6 +453,16 @@ function ScenarioCard({
         }}
         className="mt-3 grid gap-3 sm:grid-cols-2"
       >
+        <Field label="Start from a scenario pack" hint="Fills every field below from a fixed, versioned pack.">
+          <select value={packId} onChange={(event) => applyPack(event.target.value)} className={inputClass}>
+            <option value="">Custom scenario</option>
+            {SCENARIOS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title} · {item.industry} · {item.months}mo
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Title">
           <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={70} className={inputClass} />
         </Field>
@@ -734,10 +764,11 @@ function RosterCard({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ink-400">{label}</span>
+      {hint ? <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">{hint}</span> : null}
       <div className="mt-1">{children}</div>
     </label>
   )

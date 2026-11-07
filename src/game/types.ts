@@ -1,4 +1,12 @@
-export type IndustryId = 'saas' | 'fnb' | 'retail' | 'logistics'
+export type IndustryId =
+  | 'saas'
+  | 'fnb'
+  | 'retail'
+  | 'logistics'
+  | 'manufacturing'
+  | 'agriculture'
+  | 'healthcare'
+  | 'education'
 export type StrategyId = 'product' | 'sales' | 'community'
 export type RoleId = 'engineer' | 'designer' | 'sales' | 'marketer' | 'ops'
 export type Tone = 'good' | 'bad' | 'neutral'
@@ -455,6 +463,16 @@ export interface Snapshot {
   receivables?: number
 }
 
+/** The scenario a run was started from, carried with the save. */
+export interface ScenarioState {
+  id: string
+  title: string
+  ruleVersion: string
+  months: number
+  startedMonth: number
+  learningObjectives: string[]
+}
+
 export interface ServerAuthority {
   score: number
   month: number
@@ -596,6 +614,8 @@ export interface GameState {
   contracts: Contract[]
   /** Purchase orders in flight — stock arrives from these, not from a formula. */
   orders: PurchaseOrder[]
+  /** Set when the run was started from a scenario pack. */
+  scenario?: ScenarioState
   competitors: Competitor[]
   economy: EconomyState
   economyOffset: number

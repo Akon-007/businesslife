@@ -24,6 +24,7 @@ Last verified against the running suite: 23 client calls all resolve, 13 server 
 | Rubric (six competencies) | `fetchRubric` (instructor grading) | `GET /api/rubric`; grades post to `POST /api/classes/:id/grade` | `verify:api`, `verify:pdf` |
 | **Operations: purchase orders, expedite, capacity capex** | `OperationsPanel` → `placeOrder` / `expediteOrder` / `cancelOrder` / `investCapacity` (journaled) + `syncCompanyAction('operations/orders')` | `POST /api/companies/:id/operations/orders`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | **Sales funnel** | `SalesFunnel` → `qualifyLead` / `sendQuote` / `dropLead` (journaled) + `syncCompanyAction('sales/funnel')` | `POST /api/companies/:id/sales/funnel`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
+| **Scenario packs (8) + four new industries** | `Onboarding` pack picker → `store.start({ scenarioId })` → `startGame` (pack fixes industry, strategy, difficulty, seed, cash, demand); instructor `ScenarioPanel` assigns `packId` | `POST /api/classes/:id/scenario` (packId persisted); the run itself rides in `PUT /run` | `verify:scenarios`, `verify:statements` (all 8 industries), `verify:api` |
 | Instructor cohorts | `listCohorts`, `createCohort`, `inviteStudents`, `setScenario`, `fetchRoster`, `gradeStudent`, `resetStudent`, `exportRoster` | `GET/POST /api/classes`, `POST /api/classes/:id/{invite,scenario,grade,reset}`, `GET /api/classes/:id/roster`, `GET …/export.csv` | `verify:api`, `verify:auth` |
 
 **Payment runs, the marketing mix and the funnel decisions are journal ops**, carried inside the
@@ -52,6 +53,7 @@ mutation would be invisible to replay and unverifiable.
 | Feature | Why there is no route |
 |---|---|
 | PDF month report and run scorecard (`src/lib/pdf.ts`, `src/game/report-pdf.ts`) | Rendered from state the browser already holds, so an offline run still exports. The one server-derived number on the scorecard — the authority score — is already fetched from `GET /api/companies/:id/run` and printed alongside the engine score |
+| Scenario verdict (`src/game/scenarios.ts` `evaluateScenario`) | Computed from the run's own final state against the pack's objectives, using the pack's stamped `ruleVersion`. No server call is needed, and the scorecard and the run-end modal therefore cannot disagree. The *assignment* is server-side (`POST /classes/:id/scenario`); only the arithmetic is local |
 
 ## Known integration gaps (tracked, not hidden)
 

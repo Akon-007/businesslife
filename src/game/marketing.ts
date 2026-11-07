@@ -30,7 +30,7 @@ export const MARKETING_CHANNELS: readonly ChannelDefinition[] = [
     blurb: 'Cheap reach, shallow intent. Good for volume in retail and food.',
     cost: 0.8,
     quality: 0.85,
-    fit: { saas: 0.9, fnb: 1.25, retail: 1.2, logistics: 0.8 },
+    fit: { saas: 0.9, fnb: 1.25, retail: 1.2, logistics: 0.8, manufacturing: 0.75, agriculture: 0.95, healthcare: 0.85, education: 1.2 },
   },
   {
     id: 'search',
@@ -38,7 +38,7 @@ export const MARKETING_CHANNELS: readonly ChannelDefinition[] = [
     blurb: 'People already looking for the thing you sell. Dearer, converts better.',
     cost: 1.25,
     quality: 1.1,
-    fit: { saas: 1.2, fnb: 0.85, retail: 1.0, logistics: 1.1 },
+    fit: { saas: 1.2, fnb: 0.85, retail: 1.0, logistics: 1.1, manufacturing: 1.0, agriculture: 0.9, healthcare: 1.15, education: 1.05 },
   },
   {
     id: 'content',
@@ -46,7 +46,7 @@ export const MARKETING_CHANNELS: readonly ChannelDefinition[] = [
     blurb: 'Slow to start, compounds. Cheapest quality over a long run.',
     cost: 0.65,
     quality: 1.25,
-    fit: { saas: 1.3, fnb: 0.8, retail: 0.9, logistics: 1.0 },
+    fit: { saas: 1.3, fnb: 0.8, retail: 0.9, logistics: 1.0, manufacturing: 0.9, agriculture: 0.85, healthcare: 1.1, education: 1.25 },
   },
   {
     id: 'events',
@@ -54,7 +54,7 @@ export const MARKETING_CHANNELS: readonly ChannelDefinition[] = [
     blurb: 'Expensive per head, but the customers who come are worth more.',
     cost: 1.6,
     quality: 1.2,
-    fit: { saas: 0.95, fnb: 1.0, retail: 0.8, logistics: 1.35 },
+    fit: { saas: 0.95, fnb: 1.0, retail: 0.8, logistics: 1.35, manufacturing: 1.25, agriculture: 1.15, healthcare: 1.05, education: 0.85 },
   },
 ]
 

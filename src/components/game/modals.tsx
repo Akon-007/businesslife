@@ -1,5 +1,6 @@
 import { exportFilename, monthReportPdf, scorecardPdf } from '../../game/report-pdf'
 import { downloadBytes } from '../../lib/download'
+import { evaluateScenario, scenarioById } from '../../game/scenarios'
 import { useEffect } from 'react'
 import confetti from 'canvas-confetti'
 import {
@@ -406,7 +407,16 @@ export function RunEndModal({
 }) {
   const score = performanceScore(game)
   const { grade, label } = getGrade(score)
-  const status = STATUS_COPY[game.status] ?? STATUS_COPY.completed
+  const pack = scenarioById(game.scenario?.id)
+  const verdict = pack ? evaluateScenario(game, pack) : null
+  const status =
+    pack && game.status === 'completed'
+      ? {
+          eyebrow: 'Scenario complete',
+          title: `${pack.months} months are up.`,
+          copy: 'The assessment window has closed. Your instructor sees the objectives you met — the scorecard PDF prints them alongside the numbers.',
+        }
+      : STATUS_COPY[game.status] ?? STATUS_COPY.completed
   const history = game.history.map((snapshot) => snapshot.valuation)
 
   useEffect(() => {
@@ -464,6 +474,28 @@ export function RunEndModal({
                 </div>
               ))}
             </div>
+
+            {verdict && pack ? (
+              <div className="mt-4 rounded-xl bg-white/[0.05] px-3 py-3 text-left">
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">{pack.title}</p>
+                  <p className={clsx('text-[10px] font-bold', verdict.passed ? 'text-lime' : 'text-gold')}>
+                    {verdict.met}/{verdict.total} objectives met
+                  </p>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {verdict.results.map((result) => (
+                    <li key={result.objective.id} className="flex items-start gap-1.5 text-[10.5px] leading-snug">
+                      <span className={clsx('mt-1 size-1.5 shrink-0 rounded-full', result.met ? 'bg-lime' : 'bg-gold')} />
+                      <span className={result.met ? 'text-white/70' : 'text-white/45'}>
+                        {result.objective.label}
+                        {!result.met ? ` - ${result.objective.hint}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {history.length > 1 && (
               <div className="mt-4 rounded-xl bg-white/[0.05] px-3 pb-2 pt-2.5">

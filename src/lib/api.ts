@@ -393,6 +393,8 @@ export interface CohortScenario {
   months?: number
   objectives?: string[]
   seed?: number
+  /** Scenario pack the instructor assigned, if any (see src/game/scenarios.ts). */
+  packId?: string | null
   deadline?: string | null
 }
 
