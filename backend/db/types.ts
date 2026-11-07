@@ -16,6 +16,20 @@ export interface Queryable {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<{ rows: T[] }>
 }
 
+/**
+ * A single connection leased from a pool. Transactions must run on one lease:
+ * `pool.query()` may hand out a different backend connection per call, which
+ * would silently split a BEGIN and a COMMIT across two sessions.
+ */
+export interface ClientLease {
+  client: Queryable
+  release(error?: Error): void
+}
+
+export interface QueryablePool extends Queryable {
+  connect(): Promise<ClientLease>
+}
+
 export interface DatabaseStore {
   readonly driver: 'json' | 'postgres'
   load(): Promise<Database>

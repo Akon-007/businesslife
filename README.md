@@ -37,8 +37,8 @@ npm run verify:legit    # six months of honest play is never flagged as tamperin
 npm run verify:scenarios # scenario packs start, replay deterministically and score themselves
 npm run verify:db      # schema, upserts, deletes and jsonb round-trip against real Postgres (PGlite)
 npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`; CI runs it)
-npm run db:migrate      # apply backend/db/schema.sql to DATABASE_URL (Neon)
-npm run db:smoke        # prove a live endpoint: TLS, schema, write/read/delete
+npm run db:migrate      # apply backend/db/schema.sql to SUPABASE_DB_URL (or DATABASE_URL)
+npm run db:smoke        # prove a live endpoint: TLS, pooler mode, RLS, write/read/delete
 npm run build           # production build
 npm run lint            # oxlint
 ```
@@ -66,7 +66,7 @@ job installs Chromium and runs the Playwright journeys and the axe accessibility
 | Scenario packs: eight starting positions, objectives, rule version | `src/game/scenarios.ts`, `src/components/game/Onboarding.tsx` |
 | Roles and permissions (one matrix, enforced by every guard) | `backend/rbac.ts`, `GET /api/rbac`, `RoleCard` in `src/pages/Lecturer.tsx` |
 | LTI Advantage passback (keys, assertion, AGS score) | `backend/lti.ts`, `LtiCard` in `src/pages/Lecturer.tsx` |
-| Storage: JSON file or Postgres (Neon), one driver seam | `backend/store.ts`, `backend/db/` |
+| Storage: JSON file or Postgres (Supabase, or any Postgres), one driver seam | `backend/store.ts`, `backend/db/` |
 | Schema and migrations | `backend/db/schema.sql`, `scripts/db-migrate.mjs` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |
@@ -75,6 +75,15 @@ job installs Chromium and runs the Playwright journeys and the axe accessibility
 | Instructor portal | `src/pages/Lecturer.tsx` |
 | External requirements (DB, email, DNS, keys, compliance) | `docs/requirements.md` |
 | Design tokens, fonts, contrast gate | `src/index.css`, `scripts/verify-contrast.mjs` |
+
+### Storage
+
+The API persists through one seam (`loadDatabase` / `saveDatabase`). With
+`SUPABASE_DB_URL` (or `DATABASE_URL`) set it uses Postgres — one row per aggregate
+with `jsonb`, queried fields as indexed columns, row-level security enabled and
+`anon` revoked, transactions pinned to a single pooled connection, and incremental
+writes. Without it, the JSON file store is used. See `docs/database.md`; the boot
+log states which driver is live.
 
 ### Server authority
 

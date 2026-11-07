@@ -877,3 +877,47 @@ tables, the schema version, and a write/read/delete of one probe row, with timin
 is a Neon branch). And the simulation still runs in the browser: Postgres stores
 the authoritative records, it does not make the run itself server-side — that is
 still the remaining work named in §4 row 13.
+
+### 9.23 Supabase as the target, and the pooling bug that decision exposed — **implemented**
+
+The database target moved from Neon to Supabase. Both speak Postgres, so the driver
+survives unchanged — but choosing a managed, *pooled* endpoint forced a real defect
+into the open.
+
+**The bug: transactions were not pinned to a connection.** The driver issued
+`BEGIN`, the upserts and `COMMIT` through `pool.query()`. `pg`'s pool may hand out a
+*different* backend connection per call, so under Supavisor/PgBouncer the
+transaction can open on one connection and commit on another — or, worse, the
+inserts run outside the transaction entirely. Against a single-connection database
+(as in `verify:db`) it looks perfect. It would have failed exactly where it matters:
+in production, under load, partially.
+
+The fix: `PostgresStore` now leases one client for the whole save
+(`pool.connect()`), runs everything on it, releases on both the success and error
+paths, and **serialises saves** so two transactions cannot interleave. `verify:db`
+proves all of it with a fake pool that hands out distinct connections: one leased
+connection per transaction, `BEGIN`…`COMMIT` bracketed, released exactly once,
+rolled back and released on failure, no partial rows, and no overlap between
+concurrent saves.
+
+**Supabase-specific hardening.**
+
+| Concern | Handling |
+|---|---|
+| `public` is served over PostgREST to `anon` | The schema enables row-level security on all 12 tables (no policies = deny) **and** revokes `anon`/`authenticated` where those roles exist; `db:smoke` asserts on the live project that `anon` cannot select |
+| Transaction-mode pooler (6543) loses session state | No session-scoped `SET`: the statement timeout is `SET LOCAL` inside the transaction (`DB_STATEMENT_TIMEOUT_MS`); no named prepared statements |
+| Direct connections are IPv6-only on new projects | `docs/database.md` and `db:smoke` point at the pooler host and say why |
+| Keys | The API uses the Postgres connection string only — no anon key, no service-role key, no REST client |
+| Observability | `application_name=businesslife-api`, boot log names the live driver, connection logs show the client |
+
+**Tooling.** `npm run db:smoke` now detects the provider and pooler mode from the
+URL, warns when `sslmode` is omitted or when a migration is pointed at the
+transaction pooler, checks TLS, the 12 tables, the schema version and anon
+exposure, then writes/reads/deletes a probe row and runs a transaction with a
+local statement timeout. `db:migrate` warns if it is run through 6543.
+
+**Verified.** `verify:db` is now 31 checks against real Postgres (PGlite), green;
+the gate passes end to end. **Not verified:** a live Supabase endpoint — this
+sandbox cannot reach `*.supabase.co`, so TLS with their certificate, Supavisor
+behaviour, cold starts and PITR are untested until `db:smoke` is run on the real
+project. That gap is stated in `docs/database.md` rather than papered over.

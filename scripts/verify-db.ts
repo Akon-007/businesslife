@@ -18,7 +18,7 @@ import { PostgresStore, encode } from '../backend/db/postgres.js'
 import { createJsonStore } from '../backend/db/json.js'
 import { emptyDatabase, hydrateDatabase } from '../backend/db/shape.js'
 import type { Database } from '../backend/types.js'
-import type { Queryable } from '../backend/db/types.js'
+import type { Queryable, QueryablePool } from '../backend/db/types.js'
 
 let failures = 0
 const check = (label: string, ok: boolean, detail = '') => {
@@ -139,7 +139,8 @@ async function main() {
   const counting = { statements: 0 }
   const queryable: Queryable = {
     async query<T>(text: string, params?: unknown[]) {
-      if (!/^\s*(begin|commit|rollback)/i.test(text)) {
+      // Session/transaction setup is not a data write and is not counted.
+      if (!/^\s*(begin|commit|rollback|set )/i.test(text)) {
         counting.statements += 1
         if (process.env.DB_DEBUG) console.log('    SQL:', text.replace(/\s+/g, ' ').slice(0, 110), JSON.stringify(params ?? []).slice(0, 80))
       }
@@ -203,6 +204,16 @@ async function main() {
   const historyRow = await pglite.query<{ history: unknown }>(`select data->'history' as history from classroom_records`)
   check('grade history stays intact in jsonb', Array.isArray(historyRow.rows[0]?.history) && (historyRow.rows[0]?.history as unknown[]).length === 2)
 
+  const rls = await pglite.query<{ relname: string; relrowsecurity: boolean }>(
+    `select relname, relrowsecurity from pg_class where relname = any($1::text[])`,
+    [['players', 'sessions', 'companies', 'classes', 'classroom_records', 'lti_keys']],
+  )
+  check(
+    'row level security is enabled on every table that holds personal data',
+    rls.rows.length === 6 && rls.rows.every((row) => row.relrowsecurity === true),
+    rls.rows.filter((row) => !row.relrowsecurity).map((row) => row.relname).join(', '),
+  )
+
   const byEmail = await pglite.query<{ id: string }>(`select id from players where account_email = 'ada@school.test'`)
   check('a player can be found by email without scanning', byEmail.rows[0]?.id === 'plr_1')
   const byRole = await pglite.query<{ id: string }>(`select id from players where role = 'instructor'`)
@@ -248,6 +259,112 @@ async function main() {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+
+  // Pooled endpoints (Supavisor, PgBouncer) must not split a transaction across
+  // connections: BEGIN and COMMIT have to run on the same leased client.
+  console.log('\nTransactions on a pooled endpoint\n')
+
+  const connections: string[] = []
+  let leaseCount = 0
+  let released = 0
+  const makeClient = (name: string): Queryable => ({
+    async query<T>(text: string, params?: unknown[]) {
+      if (/^\s*(begin|commit|rollback)/i.test(text)) connections.push(`${name}:${text.trim().toLowerCase()}`)
+      const result = await pglite.query<T>(text, params as never[])
+      return { rows: result.rows as T[] }
+    },
+  })
+  const pool: QueryablePool = {
+    async query<T>(text: string, params?: unknown[]) {
+      const result = await pglite.query<T>(text, params as never[])
+      return { rows: result.rows as T[] }
+    },
+    async connect() {
+      const name = `conn${++leaseCount}`
+      return { client: makeClient(name), release: () => { released += 1 } }
+    },
+  }
+
+  const pooledStore = new PostgresStore(pool, pool)
+  const pooled = await pooledStore.load()
+  pooled.players.push({ id: 'plr_3', name: 'Pooled Player', role: 'learner', createdAt: '2026-11-05T00:00:00.000Z', wallet: 0, progression: { xp: 0, reputation: 0 } } as never)
+  connections.length = 0
+  await pooledStore.save(pooled)
+
+  const transactionConnection = new Set(connections.map((entry) => entry.split(':')[0]))
+  check('a transaction runs on exactly one leased connection', transactionConnection.size === 1, connections.join(' '))
+  check('the transaction is bracketed by begin and commit', connections[0]?.endsWith('begin') === true && connections.at(-1)?.endsWith('commit') === true, connections.join(' '))
+  check('the lease is released exactly once', released === 1, `${released} releases`)
+  check('the pooled write landed', (await pooledStore.load()).players.some((player) => player.id === 'plr_3'))
+
+  // A failure mid-save must roll back and still release the connection.
+  released = 0
+  const failing: QueryablePool = {
+    query: pool.query,
+    async connect() {
+      leaseCount += 1
+      return {
+        client: {
+          async query<T>(text: string) {
+            if (/insert into players/i.test(text)) throw new Error('simulated failure')
+            const result = await pglite.query<T>(text)
+            return { rows: result.rows as T[] }
+          },
+        },
+        release: () => { released += 1 },
+      }
+    },
+  }
+  const brokenStore = new PostgresStore(failing, failing)
+  await brokenStore.load().catch(() => undefined)
+  const failing2 = new PostgresStore(failing, failing)
+  const toWrite = structuredClone(pooled)
+  toWrite.players.push({ id: 'plr_4', name: 'Never Saved', role: 'learner', createdAt: '2026-11-05T00:00:00.000Z', wallet: 0, progression: { xp: 0, reputation: 0 } } as never)
+  let threw = false
+  try {
+    await failing2.save(toWrite)
+  } catch {
+    threw = true
+  }
+  check('a failed save throws instead of pretending to succeed', threw)
+  check('a failed save still releases its connection', released >= 1, `${released} releases`)
+  const afterFailure = await pooledStore.load()
+  check('a failed save leaves no partial rows', !afterFailure.players.some((player) => player.id === 'plr_4'))
+
+  // Saves are serialised, so overlapping writes cannot interleave transactions.
+  const order: string[] = []
+  const serialPool: QueryablePool = {
+    query: pool.query,
+    async connect() {
+      const name = `s${++leaseCount}`
+      return {
+        client: {
+          async query<T>(text: string, params?: unknown[]) {
+            if (/^\s*(begin|commit)/i.test(text)) order.push(`${name}:${text.trim().toLowerCase()}`)
+            if (/^\s*begin/i.test(text)) await new Promise((resolve) => setTimeout(resolve, 5))
+            const result = await pglite.query<T>(text, params as never[])
+            return { rows: result.rows as T[] }
+          },
+        },
+        release: () => undefined,
+      }
+    },
+  }
+  const serial = new PostgresStore(serialPool, serialPool)
+  await serial.load()
+  const a = structuredClone(pooled)
+  a.players.push({ id: 'plr_5', name: 'A', role: 'learner', createdAt: 'x', wallet: 0, progression: { xp: 0, reputation: 0 } } as never)
+  const b = structuredClone(pooled)
+  b.players.push({ id: 'plr_6', name: 'B', role: 'learner', createdAt: 'x', wallet: 0, progression: { xp: 0, reputation: 0 } } as never)
+  await Promise.all([serial.save(a), serial.save(b)])
+  const brackets: string[] = []
+  let open = false
+  for (const entry of order) {
+    const [name, verb] = entry.split(':')
+    if (verb === 'begin') { if (open) brackets.push('overlap'); open = true } else open = false
+    void name
+  }
+  check('concurrent saves never overlap their transactions', brackets.length === 0, order.join(' '))
 
   // Every table the driver writes must be declared in schema.sql.
   const written = Object.keys(encode(data).rows)

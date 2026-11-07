@@ -12,15 +12,19 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const url = (process.env.DATABASE_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
+const url = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
 if (!url) {
-  console.error('\nDATABASE_URL is not set. Export the Neon connection string (with ?sslmode=require) and retry.')
+  console.error('\nNo database URL. Set SUPABASE_DB_URL (or DATABASE_URL) with ?sslmode=require and retry.')
   console.error('Nothing was changed.\n')
   process.exit(1)
 }
 
 const schema = readFileSync(fileURLToPath(new URL('../backend/db/schema.sql', import.meta.url)), 'utf8')
-const ssl = /sslmode=disable/.test(url) ? undefined : { rejectUnauthorized: true }
+const ssl = /sslmode=disable/.test(url) ? undefined : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+const isTransactionPooler = /pooler\.supabase\.com$/.test(new URL(url).hostname) && new URL(url).port === '6543'
+if (isTransactionPooler) {
+  console.warn('\nNote: port 6543 is the transaction pooler. A multi-statement migration is safer on the session pooler (5432) or the direct connection.\n')
+}
 
 const { default: pg } = await import('pg')
 const client = new pg.Client({ connectionString: url, ssl })

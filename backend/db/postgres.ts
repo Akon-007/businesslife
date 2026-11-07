@@ -16,7 +16,7 @@
  * halfway through cannot leave a company without its owner.
  */
 import type { ClassRoom, ClassroomRecord, Database, Id, Player, Session } from '../types.js'
-import type { DatabaseStore, Queryable, Rows } from './types.js'
+import type { ClientLease, DatabaseStore, Queryable, QueryablePool, Rows } from './types.js'
 
 const TABLES = [
   'players',
@@ -50,6 +50,9 @@ const INSERT_ORDER: Table[] = [
 ]
 
 const singleton = 'default'
+
+/** A single save must never hang a pooled connection indefinitely. */
+const STATEMENT_TIMEOUT_MS = Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 20_000)
 
 /**
  * Flatten the in-memory database into rows. `classRecords` and `classStudents`
@@ -166,8 +169,19 @@ export class PostgresStore implements DatabaseStore {
   private lastRecords = new Map<string, string>()
   private lastMembership = new Set<string>()
   private lastLtiKid: string | null = null
+  /** Saves are serialised so two transactions can never interleave. */
+  private queue: Promise<void> = Promise.resolve()
 
-  constructor(private readonly db: Queryable) {}
+  /**
+   * `pool` is optional: with it, every save runs on one leased connection (the
+   * only correct way with Supabase's Supavisor or any PgBouncer-style pooler).
+   * Without it, the single `db` handle is used — which is what the WASM driver in
+   * `verify:db` provides.
+   */
+  constructor(
+    private readonly db: Queryable,
+    private readonly pool?: QueryablePool,
+  ) {}
 
   async load(): Promise<Database> {
     const select = async <T>(table: Table) => (await this.db.query<{ data: T }>(`select data from ${table}`)).rows
@@ -233,32 +247,51 @@ export class PostgresStore implements DatabaseStore {
   }
 
   async save(database: Database): Promise<void> {
+    const run = this.queue.then(() => this.write(database))
+    // Keep the chain alive even when a save rejects, or every later save would
+    // inherit the rejection.
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  private async write(database: Database): Promise<void> {
     const encoded = encode(database)
-    await this.db.query('begin')
+    const lease: ClientLease | null = this.pool ? await this.pool.connect() : null
+    const runner: Queryable = lease ? lease.client : this.db
     try {
+      await runner.query('begin')
+      // `set local` is transaction-scoped, so it is safe on Supavisor's
+      // transaction mode (port 6543) where session state does not survive.
+      await runner.query(`set local statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
       for (const table of INSERT_ORDER) {
         if (table === 'class_students' || table === 'classroom_records') continue
         for (const row of encoded.rows[table] ?? []) {
           const key = `${table}:${rowKey(table, row)}`
           const bytes = serialise(row)
           if (this.last.get(key) === bytes) continue
-          await this.upsert(table, row)
+          await this.upsert(runner, table, row)
           this.last.set(key, bytes)
         }
       }
 
-      await this.syncMembership(encoded.classStudents)
-      await this.syncRecords(encoded.classRecords)
+      await this.syncMembership(runner, encoded.classStudents)
+      await this.syncRecords(runner, encoded.classRecords)
 
-      await this.prune(database)
-      await this.db.query('commit')
+      await this.prune(runner, database)
+      await runner.query('commit')
+      lease?.release()
     } catch (error) {
-      await this.db.query('rollback')
+      try {
+        await runner.query('rollback')
+      } catch {
+        /* the connection may already be gone */
+      }
+      lease?.release(error instanceof Error ? error : new Error(String(error)))
       throw error
     }
   }
 
-  private async upsert(table: Table, row: Record<string, unknown>) {
+  private async upsert(runner: Queryable, table: Table, row: Record<string, unknown>) {
     const columns = Object.keys(row)
     const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ')
     const updates = columns.map((column) => `${column} = excluded.${column}`).join(', ')
@@ -268,31 +301,31 @@ export class PostgresStore implements DatabaseStore {
         : table === 'city_state' || table === 'marketplace_state'
           ? '(id)'
           : `(${table === 'sessions' ? 'token' : table === 'lti_keys' ? 'kid' : 'id'})`
-    await this.db.query(
+    await runner.query(
       `insert into ${table} (${columns.join(', ')}) values (${placeholders}) on conflict ${conflict} do update set ${updates}`,
       columns.map((column) => row[column]),
     )
   }
 
-  private async syncMembership(desired: Record<string, string[]>) {
+  private async syncMembership(runner: Queryable, desired: Record<string, string[]>) {
     const next = new Set<string>()
     for (const [classId, ids] of Object.entries(desired)) {
       for (const studentId of ids) {
         const key = `${classId}\u0000${studentId}`
         next.add(key)
         if (this.lastMembership.has(key)) continue
-        await this.db.query('insert into class_students (class_id, student_id) values ($1, $2) on conflict do nothing', [classId, studentId])
+        await runner.query('insert into class_students (class_id, student_id) values ($1, $2) on conflict do nothing', [classId, studentId])
       }
     }
     for (const key of this.lastMembership) {
       if (next.has(key)) continue
       const [classId, studentId] = key.split('\u0000')
-      await this.db.query('delete from class_students where class_id = $1 and student_id = $2', [classId, studentId])
+      await runner.query('delete from class_students where class_id = $1 and student_id = $2', [classId, studentId])
     }
     this.lastMembership = next
   }
 
-  private async syncRecords(desired: Record<string, ClassroomRecord[]>) {
+  private async syncRecords(runner: Queryable, desired: Record<string, ClassroomRecord[]>) {
     const next = new Map<string, string>()
     for (const [classId, entries] of Object.entries(desired)) {
       for (const entry of entries) {
@@ -300,7 +333,7 @@ export class PostgresStore implements DatabaseStore {
         const bytes = canonicalJson(entry)
         next.set(key, bytes)
         if (this.lastRecords.get(key) === bytes) continue
-        await this.db.query(
+        await runner.query(
           `insert into classroom_records (class_id, student_id, grade, data) values ($1, $2, $3, $4)
            on conflict (class_id, student_id) do update set grade = excluded.grade, data = excluded.data, updated_at = now()`,
           [classId, entry.studentId, entry.grade ?? null, entry],
@@ -310,13 +343,13 @@ export class PostgresStore implements DatabaseStore {
     for (const key of this.lastRecords.keys()) {
       if (next.has(key)) continue
       const [classId, studentId] = key.split('\u0000')
-      await this.db.query('delete from classroom_records where class_id = $1 and student_id = $2', [classId, studentId])
+      await runner.query('delete from classroom_records where class_id = $1 and student_id = $2', [classId, studentId])
     }
     this.lastRecords = next
   }
 
   /** Remove rows that existed in the last save and no longer exist. */
-  private async prune(database: Database) {
+  private async prune(runner: Queryable, database: Database) {
     const present = new Map<Table, Set<string>>()
     const encoded = encode(database)
     for (const table of TABLES) {
@@ -331,28 +364,28 @@ export class PostgresStore implements DatabaseStore {
         if (!key.startsWith(`${table}:`)) continue
         const id = key.slice(table.length + 1)
         if (desired.has(id)) continue
-        await this.deleteRow(table, id)
+        await this.deleteRow(runner, table, id)
         this.last.delete(key)
       }
     }
     this.lastLtiKid = database.ltiKeys?.kid ?? null
   }
 
-  private async deleteRow(table: Table, id: string) {
+  private async deleteRow(runner: Queryable, table: Table, id: string) {
     switch (table) {
       case 'sessions':
-        await this.db.query('delete from sessions where token = $1', [id])
+        await runner.query('delete from sessions where token = $1', [id])
         return
       case 'idempotency': {
         const [playerId, key] = id.split('\u0000')
-        await this.db.query('delete from idempotency where player_id = $1 and key = $2', [playerId, key])
+        await runner.query('delete from idempotency where player_id = $1 and key = $2', [playerId, key])
         return
       }
       case 'lti_keys':
-        await this.db.query('delete from lti_keys where kid = $1', [id])
+        await runner.query('delete from lti_keys where kid = $1', [id])
         return
       default:
-        await this.db.query(`delete from ${table} where id = $1`, [id])
+        await runner.query(`delete from ${table} where id = $1`, [id])
     }
   }
 
@@ -368,12 +401,17 @@ export async function createPgStore(connectionString: string): Promise<DatabaseS
   const { Pool } = await import('pg')
   const pool = new Pool({
     connectionString,
-    // Neon terminates TLS with a public CA; `sslmode=require` in the URL is
-    // honoured by pg, and this keeps the same guarantee when it is not.
-    ssl: /sslmode=disable/.test(connectionString) ? undefined : { rejectUnauthorized: true },
+    // Supabase (and Neon) present a publicly-trusted certificate, so this is the
+    // strict default. `DB_SSL_INSECURE=true` exists for a self-signed proxy and
+    // says so in the boot log rather than silently downgrading in code.
+    ssl: /sslmode=disable/.test(connectionString)
+      ? undefined
+      : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' },
     max: Number(process.env.PGPOOL_MAX ?? 8),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
+    // Shows up in Supabase's connection logs, which makes a stray client obvious.
+    application_name: 'businesslife-api',
   })
   const queryable: Queryable = {
     async query<T>(text: string, params?: unknown[]) {
@@ -381,7 +419,22 @@ export async function createPgStore(connectionString: string): Promise<DatabaseS
       return { rows: result.rows as T[] }
     },
   }
-  const store = new PostgresStore(queryable)
+  const pooled: QueryablePool = {
+    query: queryable.query,
+    async connect() {
+      const client = await pool.connect()
+      return {
+        client: {
+          async query<T>(text: string, params?: unknown[]) {
+            const result = await client.query(text, params as never[])
+            return { rows: result.rows as T[] }
+          },
+        },
+        release: (error?: Error) => client.release(error as never),
+      }
+    },
+  }
+  const store = new PostgresStore(queryable, pooled)
   return {
     driver: 'postgres',
     load: () => store.load(),

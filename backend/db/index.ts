@@ -1,9 +1,9 @@
 /**
  * Driver selection.
  *
- * `DATABASE_URL` (or `NEON_DATABASE_URL`, which Neon sets for you in some
- * environments) switches the API to Postgres. Nothing else changes: routes still
- * call `saveDatabase(database)`.
+ * `DATABASE_URL` (or `SUPABASE_DB_URL`, or Neon's `NEON_DATABASE_URL`) switches
+ * the API to Postgres. Nothing else changes: routes still call
+ * `saveDatabase(database)`.
  */
 import { createJsonStore } from './json.js'
 import { createPgStore } from './postgres.js'
@@ -11,8 +11,13 @@ import type { DatabaseStore } from './types.js'
 
 let cached: DatabaseStore | null = null
 
+/**
+ * Supabase sets no variable for you, so accept the names people actually use:
+ * `DATABASE_URL`, the Supabase-style `SUPABASE_DB_URL`, and Neon's
+ * `NEON_DATABASE_URL` for older deployments.
+ */
 export function databaseUrl(): string | null {
-  const url = process.env.DATABASE_URL ?? process.env.NEON_DATABASE_URL ?? ''
+  const url = process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? ''
   return url.trim() ? url.trim() : null
 }
 

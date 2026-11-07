@@ -1,4 +1,4 @@
--- BUSINESSLIFE schema — Postgres 15+ (Neon compatible).
+-- BUSINESSLIFE schema — Postgres 15+ (Supabase, Neon, or any Postgres).
 --
 -- Shape: one row per aggregate, the domain object in `jsonb`, and the columns
 -- that are actually queried lifted out as real columns with indexes. That keeps
@@ -113,3 +113,37 @@ create table if not exists app_meta (
 
 insert into app_meta (key, value) values ('schema_version', '{"version": 1}'::jsonb)
   on conflict (key) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Exposure control (Supabase, and any Postgres with a REST layer in front).
+--
+-- Supabase serves the `public` schema over PostgREST to the `anon` and
+-- `authenticated` roles. This application talks to Postgres directly with the
+-- project's database user, so those roles have no business reading players,
+-- sessions or grades. Row level security with no policies denies everyone except
+-- the owner, and the grants are revoked as well — belt and braces, because RLS
+-- can be disabled by a future migration but a missing grant does not come back.
+--
+-- On a plain Postgres (no such roles) the block simply enables RLS.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  target text;
+  restricted text[] := array[
+    'players', 'sessions', 'companies', 'classes', 'class_students',
+    'classroom_records', 'npcs', 'idempotency', 'city_state',
+    'marketplace_state', 'lti_keys', 'app_meta'
+  ];
+  has_anon boolean := exists (select 1 from pg_roles where rolname = 'anon');
+  has_authenticated boolean := exists (select 1 from pg_roles where rolname = 'authenticated');
+begin
+  foreach target in array restricted loop
+    execute format('alter table %I enable row level security', target);
+    if has_anon then
+      execute format('revoke all on %I from anon', target);
+    end if;
+    if has_authenticated then
+      execute format('revoke all on %I from authenticated', target);
+    end if;
+  end loop;
+end $$;
