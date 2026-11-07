@@ -370,7 +370,7 @@ function RunPreview() {
     <div className="rounded-2xl bg-ink-950 p-3.5 text-white shadow-inner">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-white/40">Month 08</p>
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-white/60">Month 08</p>
           <p className="mt-0.5 font-display text-lg font-semibold text-white">Your monthly plan</p>
         </div>
         <span className="rounded-full bg-lime px-2 py-1 text-[9.5px] font-bold text-ink">Runway 9mo</span>
@@ -394,7 +394,7 @@ function RunPreview() {
       </div>
       <div className="mt-3.5 flex items-center justify-between rounded-xl bg-white/10 px-3 py-2.5">
         <div>
-          <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Projected cash</p>
+          <p className="text-[9px] uppercase tracking-[0.1em] text-white/60">Projected cash</p>
           <p className="font-display text-base font-semibold">₦238,400,000</p>
         </div>
         <span className="rounded-full bg-white px-3 py-1.5 text-[10px] font-bold text-ink">Close month →</span>
@@ -570,20 +570,20 @@ function PriceVisual() {
   return (
     <div className="rounded-2xl bg-ink-950 p-4 text-white">
       <div className="flex items-baseline justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Your price</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/60">Your price</p>
         <p className="font-display text-2xl font-semibold text-lime">₦79,000</p>
       </div>
       <div className="relative mt-4 h-1.5 rounded-full bg-white/15">
         <div className="absolute inset-y-0 left-0 w-[58%] rounded-full bg-lime" />
         <span className="absolute -top-1.5 left-[58%] size-4 -translate-x-1/2 rounded-full border-2 border-ink bg-lime shadow" />
       </div>
-      <div className="mt-1.5 flex justify-between text-[8.5px] font-semibold text-white/35">
+      <div className="mt-1.5 flex justify-between text-[8.5px] font-semibold text-white/60">
         <span>₦29,000</span>
         <span>market avg. ₦79,000</span>
         <span>₦299,000</span>
       </div>
       <div className="mt-4 rounded-xl bg-white/[0.07] px-3 py-2.5">
-        <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Forecast</p>
+        <p className="text-[9px] uppercase tracking-[0.1em] text-white/60">Forecast</p>
         <div className="mt-1 flex items-baseline justify-between">
           <p className="text-[11px] font-semibold text-white">+18 customers</p>
           <p className="text-[11px] font-semibold text-coral">−7.2% margin</p>
@@ -650,7 +650,7 @@ function AdvisorVisual() {
         </span>
         <div>
           <p className="text-[11px] font-bold">Nova · Chief of staff</p>
-          <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">Reads your monthly numbers</p>
+          <p className="text-[9px] uppercase tracking-[0.1em] text-white/60">Reads your monthly numbers</p>
         </div>
         <span className="ml-auto flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[8.5px] font-bold text-lime">
           <span className="size-1 rounded-full bg-lime" /> LIVE
@@ -722,7 +722,7 @@ function MiniCase() {
                 You are eight months into a SaaS company. Cash is fine, growth is slowing, and your biggest customer
                 just asked for a discount. Choose — then live with the next twelve months.
               </p>
-              <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-white/40">
+              <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] font-semibold text-white/60">
                 <span className="inline-flex items-center gap-1.5"><CircleDollarSign className="size-3.5 text-lime" /> ₦79,000 avg. price</span>
                 <span className="inline-flex items-center gap-1.5"><Users className="size-3.5 text-lime" /> 290 customers</span>
                 <span className="inline-flex items-center gap-1.5"><Wallet className="size-3.5 text-lime" /> ₦238m cash</span>
@@ -869,7 +869,7 @@ function Programmes() {
               ].map(([value, label]) => (
                 <div key={label}>
                   <p className="font-display text-[28px] font-semibold leading-none text-lime">{value}</p>
-                  <p className="mt-1 text-[10.5px] font-medium uppercase tracking-[0.1em] text-white/40">{label}</p>
+                  <p className="mt-1 text-[10.5px] font-medium uppercase tracking-[0.1em] text-white/60">{label}</p>
                 </div>
               ))}
             </div>
@@ -1054,7 +1054,7 @@ function FinalCta() {
                 For programmes
               </a>
             </div>
-            <p className="mt-4 text-[10.5px] text-white/30">No credit card. No download. Saved in your browser.</p>
+            <p className="mt-4 text-[10.5px] text-white/60">No credit card. No download. Saved in your browser.</p>
           </div>
           <div className="relative mt-10 h-32 overflow-hidden sm:h-40">
             <Skyline className="absolute inset-x-0 bottom-0 w-full opacity-90" />

@@ -310,7 +310,7 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
             <p className="mt-0.5 text-[11px] text-white/50">
               {game.founder} · {background.name} founder · {industry.name}
             </p>
-            <p className="mt-0.5 text-[10px] text-white/35">
+            <p className="mt-0.5 text-[10px] text-white/60">
               {strategy.name} · {difficulty.name} difficulty
             </p>
           </div>
@@ -325,7 +325,7 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
             ['Your equity', `${game.founderEquity.toFixed(1)}%`],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl bg-white/[0.07] px-2.5 py-2">
-              <p className="text-[9px] uppercase tracking-[0.1em] text-white/40">{label}</p>
+              <p className="text-[9px] uppercase tracking-[0.1em] text-white/60">{label}</p>
               <p className="mt-0.5 font-display text-[15px] font-semibold">{value}</p>
             </div>
           ))}
@@ -333,7 +333,7 @@ function CompanyPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) 
         <div className="mt-3 h-10">
           <Sparkline data={cashHistory.length > 1 ? cashHistory : [game.cash * 0.85, game.cash]} color="#35e0a1" height={40} />
         </div>
-        <div className="mt-1 flex items-center justify-between text-[9.5px] text-white/40">
+        <div className="mt-1 flex items-center justify-between text-[9.5px] text-white/60">
           <span>Cash since day 1</span>
           <span>
             Day {game.day} · {monthLabel(game.month)}
@@ -1571,7 +1571,7 @@ function JourneyPanel() {
             <h3 className="mt-1 font-display text-[22px] font-semibold">Build the company.</h3>
             <p className="mt-1 max-w-[280px] text-[11px] leading-relaxed text-white/60">A 75-level guided journey from first idea to enterprise and legacy.</p>
           </div>
-          <div className="text-right"><p className="font-display text-3xl font-semibold text-lime">{game.beginner.xp}</p><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/45">XP earned</p></div>
+          <div className="text-right"><p className="font-display text-3xl font-semibold text-lime">{game.beginner.xp}</p><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/60">XP earned</p></div>
         </div>
         <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-lime transition-[width]" style={{ width: `${(completedMissions / totalMissions) * 100}%` }} /></div>
         <p className="relative mt-2 text-[10px] font-semibold text-white/55">{completedLevels}/75 levels · {completedMissions}/{totalMissions} missions</p>
@@ -1711,7 +1711,7 @@ function NovaPanel({ onNavigate }: { onNavigate: (panel: PanelId) => void }) {
           </span>
           <div>
             <p className="font-display text-[16px] font-semibold">Nova · Chief of staff</p>
-            <p className="text-[10px] text-white/45">Answers from server-verified numbers only</p>
+            <p className="text-[10px] text-white/60">Answers from server-verified numbers only</p>
           </div>
         </div>
         <div className="mt-3 space-y-1.5">

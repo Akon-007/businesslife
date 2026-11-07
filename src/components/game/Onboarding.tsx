@@ -777,7 +777,7 @@ export function Onboarding() {
                           <p className="mt-0.5 text-[11.5px] text-white/50">
                             {founder.trim() || 'Founder'} · {industryDef.name} · {strategyDef.name}
                           </p>
-                          <p className="mt-1 text-[10.5px] text-white/40">
+                          <p className="mt-1 text-[10.5px] text-white/60">
                             {backgroundDef.name} founder · {difficultyDef.name} mode
                           </p>
                         </div>

@@ -24,6 +24,9 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: APP,
+    // The UI is reduced-motion aware; asking for it also stops entrance
+    // animations mid-fade when axe samples colours.
+    reducedMotion: 'reduce',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...devices['Desktop Chrome'],

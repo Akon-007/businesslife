@@ -10,6 +10,9 @@ import { expect, test, type Page } from '@playwright/test'
  * `moderate` findings are printed so they can be triaged without blocking.
  */
 async function audit(page: Page, label: string) {
+  // Let entrance animations settle: sampling a half-faded element reports the
+  // blended colour, which is not the colour a user reads.
+  await page.waitForTimeout(400)
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()

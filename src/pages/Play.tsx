@@ -428,7 +428,7 @@ function TopBar({
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-[14px] font-semibold leading-tight sm:text-[15px]">{game.company}</p>
-          <p className="truncate text-[9.5px] text-white/40">
+          <p className="truncate text-[9.5px] text-white/60">
             {industry.name} · {strategy.name}
           </p>
         </div>
@@ -452,7 +452,7 @@ function TopBar({
 
         <div className="flex shrink-0 items-center gap-1.5">
           <div className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-center">
-            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">Day</p>
+            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/60">Day</p>
             <p className="text-[11px] font-bold leading-tight tabular-nums">
               {game.day}
             </p>
@@ -491,7 +491,7 @@ function TopBar({
 function HudPill({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
   return (
     <div className="rounded-xl bg-white/[0.06] px-2.5 py-1.5">
-      <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35">{label}</p>
+      <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/60">{label}</p>
       <p
         className={clsx(
           'figure text-[11px] font-semibold leading-tight tabular-nums',
@@ -510,7 +510,7 @@ function HudPill({ label, value, tone }: { label: string; value: string; tone?: 
 function HudChip({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
   return (
     <div className="flex shrink-0 items-baseline gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
-      <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-white/35">{label}</span>
+      <span className="text-[8px] font-bold uppercase tracking-[0.1em] text-white/60">{label}</span>
       <span
         className={clsx(
           'figure text-[10px] font-semibold tabular-nums',
