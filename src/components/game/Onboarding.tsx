@@ -214,7 +214,7 @@ export function Onboarding() {
                     <p
                       className={clsx(
                         'mt-2 text-[9.5px] font-bold uppercase tracking-[0.12em]',
-                        index === step ? 'text-ink' : index < step ? 'text-brand-700' : 'text-ink-300',
+                        index === step ? 'text-ink' : index < step ? 'text-brand-700' : 'text-ink-400',
                       )}
                     >
                       {title}

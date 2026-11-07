@@ -357,7 +357,7 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
             Enter portal
           </button>
         </form>
-        <p className="mt-4 text-[11px] leading-relaxed text-white/40">
+        <p className="mt-4 text-[11px] leading-relaxed text-ink-300">
           Every grade, reset and scenario change is written to the student's audit chain by the server. Instructor
           accounts need the code your school configured; without one you get a dev session that is disabled in production.
         </p>
