@@ -1,9 +1,10 @@
+import { loadEnv } from './env.js'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
 import { devLoginEnabled, hashPassword, instructorCode, issueSession, playerForToken, revokeSession, throttleCheck, throttleFail, throttleReset, verifyPassword } from './auth.js'
 import { BEGINNER_LEVELS, stageSummary } from './stage.js'
 import { ALL_LEVELS, allStageSummaries } from './stages.js'
-import { loadDatabase, newId, now, saveDatabase } from './store.js'
+import { loadDatabase, newId, now, saveDatabase, storeDriver } from './store.js'
 import { amountKobo, breakEven, transferFromFounder } from './finance.js'
 import { evaluateAction, forecast } from './simulation.js'
 import { consumeStock, demandFor, operationsOverview } from './operations.js'
@@ -12,11 +13,15 @@ import { searchMarketplace, seedMarketplace } from './marketplace.js'
 import { IN_GAME_APPS } from './apps.js'
 import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthority, validateSnapshot, verifyChain, type RunSnapshot } from './authority.js'
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
-import { recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
+import { comparisonFor, recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
+import { ltiJwks, parseLtiConfig, passbackScore } from './lti.js'
+import { can, permissionsFor, roleMatrix } from './rbac.js'
 import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
 import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
 import type { Company, Database, Player } from './types.js'
+
+loadEnv()
 
 const port = Number(process.env.PORT ?? 8787)
 const host = process.env.HOST ?? '127.0.0.1'
@@ -58,7 +63,9 @@ function ownedCompany(database: Database, player: Player, id: string) {
 }
 
 function isInstructor(player: Player) {
-  return player.role === 'instructor' || player.role === 'admin'
+  // Kept as a named alias so the intent at each call site stays readable; the
+  // rule itself lives in one place (backend/rbac.ts).
+  return can(player, 'cohort:manage')
 }
 
 /** An instructor may read (never write) companies belonging to their own students. */
@@ -201,6 +208,10 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     await saveDatabase(database)
     send(response, 200, { player: publicPlayer(player), token: session.token, expiresAt: session.expiresAt }); return
   }
+  if (request.method === 'GET' && path === '/api/lti/jwks') {
+    // The LMS fetches this anonymously to verify our assertions.
+    send(response, 200, ltiJwks(database)); return
+  }
   if (request.method === 'POST' && path === '/api/auth/dev-login') {
     if (!devLoginEnabled()) { error(response, 403, 'Development sign-in is disabled. Create an account or sign in.'); return }
     const input = await body(request); const requestedRole = String(input.role ?? 'learner'); const role: Player['role'] = requestedRole === 'instructor' || requestedRole === 'admin' ? requestedRole : 'learner'
@@ -218,13 +229,14 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   }
   const player = auth(request, database)
   if (!player) { error(response, 401, 'Authentication required. Sign in to continue.'); return }
-  if (request.method === 'GET' && path === '/api/me') { send(response, 200, publicPlayer(player)); return }
+  if (request.method === 'GET' && path === '/api/me') { send(response, 200, { ...publicPlayer(player), permissions: [...permissionsFor(player.role)] }); return }
+  if (request.method === 'GET' && path === '/api/rbac') { send(response, 200, { ...roleMatrix(), mine: { role: player.role, permissions: [...permissionsFor(player.role)] } }); return }
   if (path === '/api/classes' && request.method === 'GET') {
     const classrooms = database.classes.filter((item) => item.lecturerId === player.id || item.studentIds.includes(player.id))
-    send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: isInstructor(player) ? rosterFor(database, item) : undefined })) }); return
+    send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: can(player, 'replay:read') ? rosterFor(database, item) : undefined })) }); return
   }
   if (path === '/api/classes' && request.method === 'POST') {
-    if (!isInstructor(player)) { error(response, 403, 'Instructor access required. Sign in with an instructor account to create cohorts.'); return }
+    if (!can(player, 'cohort:manage')) { error(response, 403, 'Instructor access required. Sign in with an instructor account to create cohorts.'); return }
     const input = await body(request); required(input, ['name']); const classroom = { id: newId('class'), lecturerId: player.id, name: String(input.name).trim().slice(0, 80), studentIds: [] as string[], scenario: null, createdAt: now(), records: [] }; database.classes.push(classroom)
     await saveDatabase(database); send(response, 201, classroom); return
   }
@@ -232,8 +244,63 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (classMatch) {
     const classroom = database.classes.find((item) => item.id === classMatch[1] && (item.lecturerId === player.id || item.studentIds.includes(player.id))); if (!classroom) { error(response, 404, 'Class not found.'); return }
     const action = classMatch[2] ?? ''
-    const lecturer = classroom.lecturerId === player.id && isInstructor(player)
+    const lecturer = classroom.lecturerId === player.id && can(player, 'cohort:manage')
     if (request.method === 'GET' && !action) { send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return }
+    if (request.method === 'POST' && action === 'lti') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request)
+      if (input.clear === true) {
+        classroom.lti = null
+        await saveDatabase(database)
+        send(response, 200, { lti: null }); return
+      }
+      const config = parseLtiConfig(input)
+      if (!config) { error(response, 400, 'An LTI platform needs an issuer, a client id, a token URL and a line item URL.'); return }
+      classroom.lti = { ...config, configuredAt: now(), configuredBy: player.id }
+      await saveDatabase(database)
+      send(response, 200, { lti: classroom.lti }); return
+    }
+    if (request.method === 'POST' && action === 'lti/passback') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      if (!classroom.lti) { error(response, 400, 'Configure an LTI platform for this cohort first.'); return }
+      const input = await body(request)
+      const dryRun = input.dryRun !== false
+      const roster = rosterFor(database, classroom)
+      const studentIds = Array.isArray(input.studentIds) ? input.studentIds.map(String) : null
+      const requested = studentIds ? roster.filter((entry) => studentIds.includes(entry.studentId)) : roster
+      const graded = requested.filter((entry) => entry.grade !== null)
+      const results = []
+      for (const entry of graded) {
+        results.push(
+          await passbackScore(database, classroom.lti, {
+            studentId: entry.studentId,
+            grade: entry.grade as number,
+            comment: entry.feedback ?? undefined,
+          }, { dryRun }),
+        )
+      }
+      if (!dryRun) {
+        // Every grade that left the building is written to that student's audit
+        // chain, so the passback is as traceable as the mark it carries.
+        for (const result of results) {
+          if (result.status !== 'sent') continue
+          const company = database.companies.filter((item) => item.playerId === result.studentId).pop()
+          if (company) appendAudit(company, 'lti_passback', player.id, { cohortId: classroom.id, grade: result.request?.score.scoreGiven })
+        }
+        await saveDatabase(database)
+      }
+      send(response, 200, {
+        dryRun,
+        sent: results.filter((item) => item.status === 'sent' || item.status === 'dry-run').length,
+        failed: results.filter((item) => item.status === 'failed').length,
+        skipped: requested.length - graded.length,
+        results,
+      }); return
+    }
+    if (request.method === 'GET' && action === 'comparison') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      send(response, 200, comparisonFor(database, classroom)); return
+    }
     if (request.method === 'GET' && (action === 'roster' || action === 'export.csv')) {
       const roster = rosterFor(database, classroom)
       if (action === 'export.csv') { sendFile(response, 200, 'text/csv; charset=utf-8', rosterCsv(classroom, roster), `${classroom.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}-roster.csv`); return }
@@ -265,6 +332,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
         // The seed is what makes the cohort comparable: every student gets the
         // same market, the same starting conditions and the same event stream.
         seed: scenarioSeed(input.seed),
+        packId: input.packId ? String(input.packId).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) || null : null,
         assignedAt: now(),
         assignedBy: player.id,
       }
@@ -296,12 +364,20 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       if (!Number.isFinite(grade) || grade < 0 || grade > 100) { error(response, 400, 'Grade must be between 0 and 100.'); return }
 
       const record = recordFor(classroom, studentId)
+      const gradedAt = now()
+      const previousEngineScore = record.engineScoreAtGrade
       record.grade = grade
       record.feedback = String(input.feedback ?? rationale).slice(0, 1000)
       record.rubric = rubric ?? undefined
       record.rationale = rationale || undefined
       record.gradedBy = player.id
-      record.gradedAt = now()
+      record.gradedAt = gradedAt
+      // Grade history is what makes a competency profile over time possible: the
+      // latest rubric alone cannot show whether a student is improving.
+      record.history = [
+        ...(record.history ?? []),
+        { gradedAt, grade, engineScore: previousEngineScore, rubric: rubric ?? undefined, rationale: rationale || undefined },
+      ].slice(-20)
       const company = database.companies.filter((item) => item.playerId === studentId).pop()
       if (company) {
         const engineScore = authorityOf(company).score
@@ -708,7 +784,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   }
   if (request.method === 'GET' && /^\/api\/companies\/[^/]+\/financial-reports$/.test(path)) { const company = ownedCompany(database, player, path.split('/')[3]); if (!company) { error(response, 404, 'Company not found.'); return } send(response, 200, { revenue: company.revenue, expenses: company.expenses, balance: company.balance, balanceKobo: company.balanceKobo, revenueKobo: company.revenueKobo, expensesKobo: company.expensesKobo, net: company.revenue - company.expenses, breakEven: breakEven(company), transactions: company.transactions, journal: company.journal }); return }
   if (path.startsWith('/api/admin/')) {
-    if (request.headers['x-admin-key'] !== (process.env.ADMIN_KEY ?? 'dev-admin')) { error(response, 403, 'Administrator access required.'); return }
+    // Two ways in: an administrator session with the permission, or the
+    // deployment's admin key for operators and scripts.
+    const keyed = request.headers['x-admin-key'] === (process.env.ADMIN_KEY ?? 'dev-admin')
+    if (!keyed && !can(player, 'admin:read')) { error(response, 403, 'Administrator access required.'); return }
+    if (request.method !== 'GET' && !keyed && !can(player, 'admin:configure')) { error(response, 403, 'Administrator access required.'); return }
     if (request.method === 'GET' && path === '/api/admin/config') { send(response, 200, { stage: stageSummary(), city: database.city }); return }
     if (request.method === 'GET' && path === '/api/admin/activity') { send(response, 200, { events: database.companies.flatMap((company) => company.events.map((item) => ({ companyId: company.id, ...item }))).slice(0, 500) }); return }
     if (request.method === 'POST' && path === '/api/admin/events') { const input = await body(request); database.city.events.unshift({ id: newId('city-event'), createdAt: now(), ...input }); await saveDatabase(database); send(response, 201, database.city.events[0]); return }
@@ -718,8 +798,23 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   error(response, 404, 'Route not found.')
 }
 
-const database = await loadDatabase()
-database.marketplace = seedMarketplace(database.marketplace)
-await saveDatabase(database)
+/**
+ * Boot the storage layer once, and say which driver is in use.
+ *
+ * A misconfigured DATABASE_URL should stop the process with one readable line,
+ * not a stack trace from inside a pool.
+ */
+let database: Database
+try {
+  database = await loadDatabase()
+  database.marketplace = seedMarketplace(database.marketplace)
+  await saveDatabase(database)
+} catch (caught) {
+  const message = caught instanceof Error ? caught.message : String(caught)
+  console.error(`\nStorage is not reachable (${storeDriver()}): ${message}`)
+  console.error('Check SUPABASE_DB_URL (or DATABASE_URL) — the pooler host with ?sslmode=require — or unset it to run on the JSON file store.\n')
+  process.exit(1)
+}
+console.log(`storage: ${storeDriver() === 'postgres' ? 'postgres (DATABASE_URL)' : 'json file (backend/data/businesslife.json)'}`)
 const server = createServer((request, response) => { handle(request, response, database).catch((caught: unknown) => error(response, 400, caught instanceof Error ? caught.message : 'Request failed.')) })
 server.listen(port, host, () => console.log(`BUSINESSLIFE API listening on http://${host}:${port}`))

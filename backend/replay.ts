@@ -28,7 +28,7 @@ export function loadEngine(): Promise<EngineModule> {
 
 export const MAX_REPLAY_OPS = 5000
 
-const INDUSTRIES = new Set(['saas', 'fnb', 'retail', 'logistics'])
+const INDUSTRIES = new Set(['saas', 'fnb', 'retail', 'logistics', 'manufacturing', 'agriculture', 'healthcare', 'education'])
 const STRATEGIES = new Set(['product', 'sales', 'community', 'franchise'])
 const BACKGROUNDS = new Set(['operator', 'builder', 'seller', 'analyst'])
 const DIFFICULTIES = new Set(['gentle', 'standard', 'hard'])

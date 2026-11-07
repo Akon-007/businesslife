@@ -307,6 +307,8 @@ export interface Cohort {
   scenario: Record<string, unknown> | null
   createdAt: string
   roster?: RosterEntry[]
+  /** LMS platform this cohort grades back into, when configured. */
+  lti?: LtiConfig | null
 }
 
 export async function instructorLogin(name: string, email?: string, password?: string, instructorCode?: string) {
@@ -361,6 +363,97 @@ export function fetchRoster(classId: string): Promise<{ class: Cohort; roster: R
   return request(`/api/classes/${classId}/roster`, { scope: 'instructor' })
 }
 
+export interface CompetencyStat {
+  id: string
+  label: string
+  weight: number
+  mean: number | null
+  distribution: number[]
+  proficientShare: number | null
+}
+
+export interface StudentProfile {
+  studentId: string
+  name: string
+  company: string | null
+  grade: number | null
+  engineScore: number | null
+  levels: Record<string, number> | null
+  rubricGrade: number | null
+  history: { at: string; grade: number; engineScore: number | null }[]
+  trend: number | null
+}
+
+export interface CohortComparison {
+  classId: string
+  className: string
+  size: number
+  active: number
+  graded: number
+  rubricGraded: number
+  meanGrade: number | null
+  meanEngineScore: number | null
+  meanDelta: number | null
+  integrity: { verified: number; flagged: number; brokenChain: number; noData: number }
+  seedMatch: { matched: number; different: number; unknown: number }
+  replay: { match: number; mismatch: number; error: number; none: number }
+  buckets: { label: string; min: number; max: number; count: number }[]
+  competencies: CompetencyStat[]
+  students: StudentProfile[]
+}
+
+/** Cohort-level comparison and per-student competency profiles. */
+export function fetchComparison(classId: string): Promise<CohortComparison> {
+  return request(`/api/classes/${classId}/comparison`, { scope: 'instructor' })
+}
+
+export interface RoleMatrix {
+  permissions: string[]
+  roles: { role: 'learner' | 'instructor' | 'admin'; permissions: string[] }[]
+  mine: { role: 'learner' | 'instructor' | 'admin'; permissions: string[] }
+}
+
+/** Who may do what. Used by the instructor portal so the rules are visible. */
+export function fetchRoleMatrix(): Promise<RoleMatrix> {
+  return request('/api/rbac', { scope: 'instructor' })
+}
+
+export interface LtiConfig {
+  issuer: string
+  clientId: string
+  deploymentId?: string
+  tokenUrl: string
+  lineItemUrl: string
+  scope?: string
+  configuredAt?: string
+}
+
+export interface LtiPassbackResult {
+  studentId: string
+  status: 'sent' | 'dry-run' | 'failed' | 'skipped'
+  statusCode?: number
+  error?: string
+  request?: {
+    tokenUrl: string
+    lineItemUrl: string
+    assertion: { header: Record<string, unknown>; claims: Record<string, unknown> }
+    score: Record<string, unknown>
+  }
+}
+
+/** Save (or clear) the LMS platform this cohort grades back into. */
+export function configureLti(classId: string, payload: Partial<LtiConfig> & { clear?: boolean }): Promise<{ lti: LtiConfig | null }> {
+  return request(`/api/classes/${classId}/lti`, { method: 'POST', scope: 'instructor', body: JSON.stringify(payload) })
+}
+
+/** Send graded students' marks to the LMS. Dry run by default. */
+export function passbackGrades(
+  classId: string,
+  payload: { dryRun?: boolean; studentIds?: string[] } = {},
+): Promise<{ dryRun: boolean; sent: number; failed: number; skipped: number; results: LtiPassbackResult[] }> {
+  return request(`/api/classes/${classId}/lti/passback`, { method: 'POST', scope: 'instructor', body: JSON.stringify(payload) })
+}
+
 export function gradeStudent(
   classId: string,
   payload: { studentId: string; grade?: number; feedback?: string; rationale?: string; rubric?: Record<string, number> },
@@ -393,6 +486,8 @@ export interface CohortScenario {
   months?: number
   objectives?: string[]
   seed?: number
+  /** Scenario pack the instructor assigned, if any (see src/game/scenarios.ts). */
+  packId?: string | null
   deadline?: string | null
 }
 

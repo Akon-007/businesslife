@@ -4,7 +4,7 @@ What the browser actually calls, what the server exposes, and which side of the 
 `npm run verify:wiring` derives the "client calls" column from source and **fails if a client path has no
 server route** — so this table cannot silently drift.
 
-Last verified against the running suite: 23 client calls all resolve, 13 server routes have no client caller.
+Last verified against the running suite: 27 client calls all resolve, 14 server routes have no client caller.
 
 ## Player-facing features (wired)
 
@@ -24,6 +24,10 @@ Last verified against the running suite: 23 client calls all resolve, 13 server 
 | Rubric (six competencies) | `fetchRubric` (instructor grading) | `GET /api/rubric`; grades post to `POST /api/classes/:id/grade` | `verify:api`, `verify:pdf` |
 | **Operations: purchase orders, expedite, capacity capex** | `OperationsPanel` → `placeOrder` / `expediteOrder` / `cancelOrder` / `investCapacity` (journaled) + `syncCompanyAction('operations/orders')` | `POST /api/companies/:id/operations/orders`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | **Sales funnel** | `SalesFunnel` → `qualifyLead` / `sendQuote` / `dropLead` (journaled) + `syncCompanyAction('sales/funnel')` | `POST /api/companies/:id/sales/funnel`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
+| **Scenario packs (8) + four new industries** | `Onboarding` pack picker → `store.start({ scenarioId })` → `startGame` (pack fixes industry, strategy, difficulty, seed, cash, demand); instructor `ScenarioPanel` assigns `packId` | `POST /api/classes/:id/scenario` (packId persisted); the run itself rides in `PUT /run` | `verify:scenarios`, `verify:statements` (all 8 industries), `verify:api` |
+| **Roles & permissions** | `fetchRoleMatrix` → `RoleCard` in `Lecturer.tsx` renders the same matrix the server enforces | `GET /api/rbac`; `GET /api/me` also returns the caller's permissions | `verify:api` (13 checks) |
+| **LTI Advantage passback** | `configureLti` / `passbackGrades` → `LtiCard` in `Lecturer.tsx` (preview is the default; sending asks for confirmation) | `POST /api/classes/:id/lti`, `POST …/lti/passback`; the LMS fetches `GET /api/lti/jwks` anonymously | `verify:api` (22 checks, including a stub platform that verifies our RS256 assertion) |
+| **Cohort comparison + competency profiles** | `fetchComparison` (instructor) → `ComparisonCard` in `Lecturer.tsx` | `GET /api/classes/:id/comparison` (instructor only; 403 for students) | `verify:api` |
 | Instructor cohorts | `listCohorts`, `createCohort`, `inviteStudents`, `setScenario`, `fetchRoster`, `gradeStudent`, `resetStudent`, `exportRoster` | `GET/POST /api/classes`, `POST /api/classes/:id/{invite,scenario,grade,reset}`, `GET /api/classes/:id/roster`, `GET …/export.csv` | `verify:api`, `verify:auth` |
 
 **Payment runs, the marketing mix and the funnel decisions are journal ops**, carried inside the
@@ -45,6 +49,7 @@ mutation would be invisible to replay and unverifiable.
 | `GET /api/city` | City districts and properties | The 2.5D city is drawn from bundled data |
 | `GET /api/marketplace`, `/api/marketplace/businesses/:id`, `POST /api/marketplace/{enquiries,follow,message}`, `POST /api/marketplace/quotations/:id/accept` | Marketplace: browse, enquire, quote, order, message | Whole B2B marketplace is unbuilt in the UI (audit §3 item 6/16) |
 | `GET/POST /api/admin/{config,city,activity,events}` | Platform admin | No admin console |
+| `GET /api/lti/jwks` | Public signing keys for LTI assertions | The LMS fetches it, not the browser |
 | `GET /api/health` | Liveness | Used by CI and uptime monitors, not the browser |
 
 ### Client-only by design
@@ -52,6 +57,15 @@ mutation would be invisible to replay and unverifiable.
 | Feature | Why there is no route |
 |---|---|
 | PDF month report and run scorecard (`src/lib/pdf.ts`, `src/game/report-pdf.ts`) | Rendered from state the browser already holds, so an offline run still exports. The one server-derived number on the scorecard — the authority score — is already fetched from `GET /api/companies/:id/run` and printed alongside the engine score |
+| Scenario verdict (`src/game/scenarios.ts` `evaluateScenario`) | Computed from the run's own final state against the pack's objectives, using the pack's stamped `ruleVersion`. No server call is needed, and the scorecard and the run-end modal therefore cannot disagree. The *assignment* is server-side (`POST /classes/:id/scenario`); only the arithmetic is local |
+
+## Server-side storage
+
+Storage is not a route, so it does not appear in the tables above. The API talks to
+`loadDatabase()` / `saveDatabase()`; the driver is chosen by `DATABASE_URL` (JSON
+file by default, Postgres/Neon when set). The boot log names the live driver, and
+`npm run verify:db` exercises the Postgres schema and driver against real Postgres
+(PGlite). See `docs/database.md`.
 
 ## Known integration gaps (tracked, not hidden)
 
@@ -71,3 +85,5 @@ mutation would be invisible to replay and unverifiable.
 - Guard: if extraction ever finds fewer than 15 literal routes or 8 regex routes it fails loudly instead of
   reporting a false pass.
 - `npm run verify:render` then proves the panels that consume those routes render from a real game state.
+- `npx playwright test` (CI job `e2e`) walks the real journeys in a real browser — the Instructor link, onboarding
+  into a scenario pack, and the industry lock — and runs axe over the landing, onboarding and instructor pages.

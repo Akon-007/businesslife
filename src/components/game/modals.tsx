@@ -1,5 +1,6 @@
 import { exportFilename, monthReportPdf, scorecardPdf } from '../../game/report-pdf'
 import { downloadBytes } from '../../lib/download'
+import { evaluateScenario, scenarioById } from '../../game/scenarios'
 import { useEffect } from 'react'
 import confetti from 'canvas-confetti'
 import {
@@ -308,7 +309,7 @@ export function CrisisModal({
             <h2 className="mt-3 max-w-[440px] font-display text-[28px] font-semibold leading-[1.03] tracking-[-0.035em] sm:text-[32px]">
               {crisis.title}
             </h2>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">{crisis.kicker}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">{crisis.kicker}</p>
           </div>
         </div>
 
@@ -406,7 +407,16 @@ export function RunEndModal({
 }) {
   const score = performanceScore(game)
   const { grade, label } = getGrade(score)
-  const status = STATUS_COPY[game.status] ?? STATUS_COPY.completed
+  const pack = scenarioById(game.scenario?.id)
+  const verdict = pack ? evaluateScenario(game, pack) : null
+  const status =
+    pack && game.status === 'completed'
+      ? {
+          eyebrow: 'Scenario complete',
+          title: `${pack.months} months are up.`,
+          copy: 'The assessment window has closed. Your instructor sees the objectives you met — the scorecard PDF prints them alongside the numbers.',
+        }
+      : STATUS_COPY[game.status] ?? STATUS_COPY.completed
   const history = game.history.map((snapshot) => snapshot.valuation)
 
   useEffect(() => {
@@ -440,7 +450,7 @@ export function RunEndModal({
               </div>
               <div>
                 <p className="font-display text-[17px] font-semibold">{label}</p>
-                <p className="text-[10.5px] text-white/45">Score {score} / 100</p>
+                <p className="text-[10.5px] text-white/60">Score {score} / 100</p>
                 <div className="mt-1.5 h-1.5 w-32 overflow-hidden rounded-full bg-white/10">
                   <div className="h-full rounded-full bg-lime" style={{ width: `${score}%` }} />
                 </div>
@@ -459,16 +469,38 @@ export function RunEndModal({
                 ['Quality', `${Math.round(game.quality)} / 100`],
               ].map(([metric, value]) => (
                 <div key={metric} className="rounded-xl bg-white/[0.06] px-3 py-2">
-                  <p className="text-[9px] uppercase tracking-[0.1em] text-white/35">{metric}</p>
+                  <p className="text-[9px] uppercase tracking-[0.1em] text-white/60">{metric}</p>
                   <p className="mt-0.5 font-display text-[14px] font-semibold">{value}</p>
                 </div>
               ))}
             </div>
 
+            {verdict && pack ? (
+              <div className="mt-4 rounded-xl bg-white/[0.05] px-3 py-3 text-left">
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/60">{pack.title}</p>
+                  <p className={clsx('text-[10px] font-bold', verdict.passed ? 'text-lime' : 'text-gold')}>
+                    {verdict.met}/{verdict.total} objectives met
+                  </p>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {verdict.results.map((result) => (
+                    <li key={result.objective.id} className="flex items-start gap-1.5 text-[10.5px] leading-snug">
+                      <span className={clsx('mt-1 size-1.5 shrink-0 rounded-full', result.met ? 'bg-lime' : 'bg-gold')} />
+                      <span className={result.met ? 'text-white/75' : 'text-white/60'}>
+                        {result.objective.label}
+                        {!result.met ? ` - ${result.objective.hint}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {history.length > 1 && (
               <div className="mt-4 rounded-xl bg-white/[0.05] px-3 pb-2 pt-2.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">Valuation over {game.month} months</p>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/60">Valuation over {game.month} months</p>
                   <p className="text-[10px] font-semibold text-lime">{money(game.valuation, { compact: true })}</p>
                 </div>
                 <Sparkline data={history} color="#35e0a1" height={48} />
@@ -487,7 +519,7 @@ export function RunEndModal({
             )}
 
             {game.endedReason && (
-              <p className="mx-auto mt-4 max-w-md text-[10.5px] leading-relaxed text-white/35">{game.endedReason}</p>
+              <p className="mx-auto mt-4 max-w-md text-[10.5px] leading-relaxed text-white/60">{game.endedReason}</p>
             )}
           </div>
         </div>
@@ -521,7 +553,7 @@ export function RunEndModal({
           </button>
           <button
             onClick={onReview}
-            className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-white/45 transition hover:text-white"
+            className="inline-flex h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-white/60 transition hover:text-white"
           >
             Review city
           </button>

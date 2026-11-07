@@ -36,6 +36,8 @@ export interface StartInput {
   solution?: string
   seed?: number
   startingCash?: number
+  /** Start from a scenario pack (fixes industry, strategy, difficulty and seed). */
+  scenarioId?: string
 }
 
 interface GameStore {
@@ -252,6 +254,8 @@ export const useGame = create<GameStore>()(
           difficulty: game.difficulty,
           seed: game.seed,
           startingCash: game.startingCash,
+          // A pack run restarts as the same pack, so the objectives stay attached.
+          scenarioId: game.scenario?.id,
         })
         set({
           game: { ...next, backendCompanyId: game.backendCompanyId },

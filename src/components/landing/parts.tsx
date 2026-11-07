@@ -41,10 +41,11 @@ export function SectionTag({ children, dark = false }: { children: ReactNode; da
 
 export function AvatarStack({ count = 4, className }: { count?: number; className?: string }) {
   const people = [
-    { initials: 'AO', color: '#0f9c72' },
-    { initials: 'ZK', color: '#5a4be0' },
-    { initials: 'TM', color: '#176bff' },
-    { initials: 'LS', color: '#e5484d' },
+    // Fills are dark enough for white 9.5px initials to clear WCAG AA (4.5:1).
+    { initials: 'AO', color: '#087a58' },
+    { initials: 'ZK', color: '#4436b8' },
+    { initials: 'TM', color: '#0c43a9' },
+    { initials: 'LS', color: '#a32820' },
     { initials: 'HN', color: '#8a5f12' },
   ].slice(0, count)
 
@@ -100,7 +101,7 @@ export function LiveFeed({ className }: { className?: string }) {
             key={`${item.text}-${i}`}
             className={clsx(
               'flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition-all duration-500',
-              i === 0 ? 'bg-paper-2 shadow-[0_1px_0_rgba(10,29,46,0.04)]' : 'opacity-45',
+              i === 0 ? 'bg-paper-2 shadow-[0_1px_0_rgba(10,29,46,0.04)]' : '',
             )}
           >
             <span

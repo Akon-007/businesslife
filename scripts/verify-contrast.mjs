@@ -10,7 +10,8 @@
  *
  *   node scripts/verify-contrast.mjs
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
 const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
 const tokens = Object.fromEntries(
@@ -53,6 +54,8 @@ const PAIRS = [
   ['gold-ink', 'gold-soft', 4.5, 'warning chip on gold'],
   ['ink', 'gold', 4.5, 'dark text on a gold fill'],
   ['ink', 'lime', 4.5, 'dark text on the success fill'],
+  ['ink', 'success', 4.5, 'dark label on a success button'],
+  ['paper-2', 'success-strong', 4.5, 'hovered success button label'],
   ['lime', 'ink-900', 4.5, 'success text on the dark HUD'],
   ['gold', 'ink-900', 4.5, 'warning text on the dark HUD'],
   ['paper-2', 'ink-900', 4.5, 'text on the dark HUD'],
@@ -75,6 +78,31 @@ for (const [fg, bg, minimum, use] of PAIRS) {
   const pass = value >= minimum
   if (!pass) failures += 1
   console.log(`  ${pass ? '✓' : '✗'} ${`${fg} on ${bg}`.padEnd(28)} ${value.toFixed(2).padStart(5)}:1  (min ${minimum})  ${use}`)
+}
+
+// White text at low alpha on the dark surfaces cannot be expressed as a token
+// pair, so scan for it directly: below 50% white the contrast on ink-950 falls
+// under 4.5:1 (45% white measured 3.2-4.3:1; axe found the same on landing).
+const lowAlpha = []
+const walk = (dir) => {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry)
+    if (statSync(path).isDirectory()) walk(path)
+    else if (path.endsWith('.tsx')) {
+      const source = readFileSync(path, 'utf8')
+      for (const match of source.matchAll(/text-white\/(\d{1,3})/g)) {
+        if (Number(match[1]) < 50) lowAlpha.push(`${path}: text-white/${match[1]}`)
+      }
+    }
+  }
+}
+walk(new URL('../src', import.meta.url).pathname)
+
+if (lowAlpha.length) {
+  failures += lowAlpha.length
+  console.log(`\n  ✗ white text below 50% alpha on dark surfaces:\n    ${lowAlpha.join('\n    ')}`)
+} else {
+  console.log('\n  ✓ no white text below 50% alpha in src/')
 }
 
 if (missing.length) {

@@ -14,6 +14,9 @@ npm run dev           # game on http://localhost:5173 (override with DEV_PORT / 
 
 Player: **/play** · Instructor portal: **/lecturer**
 
+Eight industries (SaaS, retail, logistics, restaurants, manufacturing, agriculture, health, education),
+eight built-in scenario packs, a six-competency rubric and exportable month reports and scorecards.
+
 ## Verify it
 
 ```bash
@@ -23,7 +26,7 @@ npm run verify:auth     # registration, sign-in, session revocation, throttling,
 npm run verify:scoring  # client score == server score across industries/strategies/months
 npm run verify:determinism  # same seed + same decisions = identical run
 npm run verify:cash     # invoices move cash when they fall due, not when the sale is booked
-npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash every month
+npm run verify:statements  # P&L, balance sheet and cash flow balance and tie to cash, in every industry
 npm run verify:contrast # the design tokens clear WCAG AA for the text pairs the UI uses
 npm run verify:wiring   # every path the client calls exists on the server
 npm run verify:pdf      # the exported documents parse, and the rubric mirrors the server
@@ -31,12 +34,18 @@ npm run verify:render  # the finance UI server-renders from a real game state wi
 npm run verify:centres # payment runs, marketing mix, attribution and unit economics + journal replay
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
+npm run verify:scenarios # scenario packs start, replay deterministically and score themselves
+npm run verify:db      # schema, upserts, deletes and jsonb round-trip against real Postgres (PGlite)
+npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`; CI runs it)
+npm run db:migrate      # apply backend/db/schema.sql to SUPABASE_DB_URL (or DATABASE_URL)
+npm run db:smoke        # prove a live endpoint: TLS, pooler mode, RLS, write/read/delete
 npm run build           # production build
 npm run lint            # oxlint
 ```
 
 GitHub Actions runs the same suite on every push and pull request
-(`.github/workflows/verify.yml`): install, lint, typecheck, build, boot the API, `npm run verify`.
+(`.github/workflows/verify.yml`): install, lint, typecheck, build, boot the API, `npm run verify`. A second
+job installs Chromium and runs the Playwright journeys and the axe accessibility scan.
 
 ## Architecture notes
 
@@ -54,6 +63,11 @@ GitHub Actions runs the same suite on every push and pull request
 | Six-competency rubric, PDF month report and scorecard | `src/game/rubric.ts`, `src/game/report-pdf.ts`, `src/lib/pdf.ts` |
 | Operations: purchase orders, lead times, capacity, returns | `src/game/supply.ts`, `src/components/game/OperationsPanel.tsx` |
 | Sales funnel: leads, qualification, quotes, retainers | `src/game/sales.ts`, `src/components/game/SalesFunnel.tsx` |
+| Scenario packs: eight starting positions, objectives, rule version | `src/game/scenarios.ts`, `src/components/game/Onboarding.tsx` |
+| Roles and permissions (one matrix, enforced by every guard) | `backend/rbac.ts`, `GET /api/rbac`, `RoleCard` in `src/pages/Lecturer.tsx` |
+| LTI Advantage passback (keys, assertion, AGS score) | `backend/lti.ts`, `LtiCard` in `src/pages/Lecturer.tsx` |
+| Storage: JSON file or Postgres (Supabase, or any Postgres), one driver seam | `backend/store.ts`, `backend/db/` |
+| Schema and migrations | `backend/db/schema.sql`, `scripts/db-migrate.mjs` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |
 | Accounts, sessions, password hashing | `backend/auth.ts` |
@@ -61,6 +75,21 @@ GitHub Actions runs the same suite on every push and pull request
 | Instructor portal | `src/pages/Lecturer.tsx` |
 | External requirements (DB, email, DNS, keys, compliance) | `docs/requirements.md` |
 | Design tokens, fonts, contrast gate | `src/index.css`, `scripts/verify-contrast.mjs` |
+
+### Storage
+
+The API persists through one seam (`loadDatabase` / `saveDatabase`). With
+`SUPABASE_DB_URL` (or `DATABASE_URL`) set it uses Postgres — one row per aggregate
+with `jsonb`, queried fields as indexed columns, row-level security enabled and
+`anon` revoked, transactions pinned to a single pooled connection, and incremental
+writes. Without it, the JSON file store is used. See `docs/database.md`; the boot
+log states which driver is live.
+
+The API and the `db:*` scripts read `.env` at the repo root if one exists, so a
+connection string can live there instead of in your shell profile. Real
+environment variables take precedence, and `.env` is gitignored — only
+`.env.example` is committed. Point it at a Supabase project, run
+`npm run db:migrate` once, then `npm run db:smoke` to prove the endpoint.
 
 ### Server authority
 
@@ -141,8 +170,9 @@ verification harnesses but is disabled when `NODE_ENV=production` or `ALLOW_DEV_
 ### Invoices and cash timing
 
 Revenue is accrued when a customer buys; cash arrives when the invoice falls due. B2B industries
-sell on account (`saas` 52% on 30-day terms, `logistics` 44% on 45-day terms) while `retail` and
-`fnb` mostly collect at the till. Each month close issues that month's invoice, settles everything
+sell on account (`saas` 52% on 30-day terms, `logistics` 44% on 45-day terms, manufacturing 50% on
+45-day terms), `healthcare` 40% on 30-day terms and `agriculture` 30% on 30-day terms, while `retail`
+and `fnb` mostly collect at the till and `education` (10% on 15 days) sits in between. Each month close issues that month's invoice, settles everything
 now due, and carries the rest as receivables — with late payers marked overdue, recovering about
 80% the following month, the remainder written off. The monthly report shows the accrual gap
 (invoiced / collected / still receivable) and the Bank panel lists open invoices with due dates.
@@ -158,15 +188,23 @@ falls back), rate limiting, and trace logging. No provider receives a tool that 
 
 ### Cohorts
 
-Instructors create cohorts, invite students by id or account email, assign a scenario (industry,
-difficulty, starting capital, months, objectives, optional replay seed), review server-verified
-scores and integrity flags, grade against a four-criterion rubric, reset a run to its scenario
-start, and export CSV.
+Instructors create cohorts, invite students by id or account email, assign a scenario — either a
+**built-in pack** (eight fixed, versioned starting positions such as *The cash crunch* or *Factory
+floor*, each with its own industry, difficulty, seed, window and objectives) or a custom one
+(industry, difficulty, starting capital, months, objectives, optional replay seed) — review
+server-verified scores and integrity flags, grade against the six-competency rubric, reset a run to
+its scenario start, and export CSV. Students playing a pack see the same brief, the same market and
+the same objectives; the run-end screen and the scorecard PDF print which objectives were met.
 
-Grading uses `GET /api/rubric`: cash discipline (30%), customers & revenue (30%), team &
-operations (20%), decision quality (20%), each scored 1–4 and weighted into the 0–100 grade. A
-rubric grade is rejected unless every criterion is present and a rationale of at least 40
-characters is supplied. The stored record keeps the levels, the rationale, the engine score at
+Grading uses `GET /api/rubric`: financial acumen (25%), strategy & priorities (20%), operational
+execution (15%), market & customer (15%), leadership & team (15%), ethics & governance (10%), each
+scored 1–4 and weighted into the 0–100 grade. The portal also shows a **cohort comparison** — mean grade,
+marking delta, competency means and distributions, score bands, integrity and replay counts — and a per-student
+**competency profile over time** built from the grade history, and can **push grades to an LMS** over LTI
+Advantage AGS (signed RS256 assertion → OAuth2 token → score), with a preview that shows exactly what would be
+sent before anything leaves the building. Legacy four-criterion grades are still accepted with a
+documented mapping, and a rubric grade is rejected unless every criterion is present and a rationale
+of at least 40 characters is supplied. The stored record keeps the levels, the rationale, the engine score at
 grading time and the resulting delta; the audit chain receives a SHA-256 digest of the rationale.
 CSV export includes the rubric columns, the rationale and `grade_minus_engine`.
 

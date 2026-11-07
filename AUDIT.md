@@ -24,7 +24,10 @@
 
 **Headline:** this is a **strong, playable single-player prototype of a business simulator** with a genuinely modelled monthly economy — but it is **not** the product described in the scope. The PDF specifies an AI-enabled, server-authoritative, institution-facing platform (LLM stakeholders, RBAC, lecturer portal, multiplayer, reproducible scenarios, statements, exports). What exists is a polished client-side web game with an under-used backend and no AI, no instructor surface, no multiplayer and no test coverage.
 
-**Rough coverage of the scope document: ~30% implemented, ~25% partial, ~45% absent** — weighted by MVP acceptance criteria (§16.2), where it is **3 pass / 6 partial / 4 fail** (see §4).
+**Coverage of the scope document: ~86% implemented, ~11% partial, ~3% absent** — weighted across simulation,
+assessment tooling, integration, interface, verification and hardening; the MVP acceptance criteria (§16.2) now
+stand at **12 pass / 1 partial / 0 fail** (see §4). The remainder is concentrated in the places §6 names: a
+server-owned simulation, granular roles/RBAC, a real database, and the unbuilt §6.11 governance surface.
 
 ---
 
@@ -129,23 +132,23 @@
 
 | # | Criterion | Verdict | Note |
 |---|---|---|---|
-| 1 | Learner creates profile and configures a business | ✅ Pass | Onboarding + company creation |
-| 2 | Set marketing budget and launch campaigns | ⚠️ Partial | Client exposes a budget slider only; a server campaign endpoint exists (`POST /marketing/campaigns`) but has no demand model and is never called by the UI |
-| 3 | Leads convert into customers/orders under defined rules | ⚠️ Partial | Pipeline deals + demand model; no lead funnel |
-| 4 | Orders consume inventory or capacity | ⚠️ Partial | Inventory affects supply factor; capacity is a soft overload penalty |
-| 5 | Hire staff and process salaries | ✅ Pass | Hire/fire + monthly payroll cost |
-| 6 | Invoices and payment schedules affect cash at the right time | ❌ Fail | No invoices, no schedules |
-| 7 | Pay suppliers and recurring expenses | ⚠️ Partial | Costs are automatic; no payment actions |
-| 8 | View cash forecasts and financial statements | ⚠️ Partial | Runway/burn metrics only; no statements |
-| 9 | Decisions produce consistent, explainable consequences | ⚠️ Partial | Good month-report drivers, but random and client-side |
-| 10 | Complete a scored scenario and receive a performance report | ✅ Pass | Score + grade + debrief (but free-form run, not a configured scenario) |
-| 11 | Instructor can review decisions and replay the scenario | ❌ Fail | No instructor surface, no replay |
-| 12 | Scenario resets to a reproducible starting state | ❌ Fail | Reset exists; reproducibility does not |
-| 13 | Unauthorised users cannot alter balances or scores | ❌ Fail | State lives in `localStorage`; any user can edit balances/score directly |
+| 1 | Learner creates profile and configures a business | ✅ Pass | Onboarding, unique business name, `POST /api/companies` |
+| 2 | Set marketing budget and launch campaigns | ✅ Pass | Marketing centre: six channels, mix allocation, attribution and CAC/LTV (§9.9) |
+| 3 | Leads convert into customers/orders under defined rules | ✅ Pass | Sales funnel: leads, qualification, quotes, retainers (§9.14) |
+| 4 | Orders consume inventory or capacity | ✅ Pass | Purchase orders, lead times, capacity, returns (§9.15) |
+| 5 | Hire staff and process salaries | ✅ Pass | Hire/fire + monthly payroll |
+| 6 | Invoices and payment schedules affect cash at the right time | ✅ Pass | Accrual invoices with due dates and settlement (§9.6/§9.8) |
+| 7 | Pay suppliers and recurring expenses | ✅ Pass | Supplier bills, payment runs, overdue fees (§9.12) |
+| 8 | View cash forecasts and financial statements | ✅ Pass | Finance centre: P&L, balance sheet, cash flow, what-if (§9.8) |
+| 9 | Decisions produce consistent, explainable consequences | ✅ Pass | Deterministic engine, decision journal, server replay (§9.5, §9.7) |
+| 10 | Complete a scored scenario and receive a performance report | ✅ Pass | Eight versioned scenario packs with objectives, debrief and scorecard PDF (§9.17) |
+| 11 | Instructor can review decisions and replay the scenario | ✅ Pass | Instructor portal: roster, replay, rubric, comparison, LTI passback (§9.3, §9.5, §9.19, §9.20) |
+| 12 | Scenario resets to a reproducible starting state | ✅ Pass | Pack seeds + instructor reset (§9.3, §9.17) |
+| 13 | Unauthorised users cannot alter balances or scores | ⚠️ Partial | Authoritative fields (score, cash, month, customers, valuation) are server-owned, bounds-checked, audited and replay-verified; the *local* copy is still editable, so a tampered run is flagged and rejected rather than prevented |
 
-**Result: 3 pass · 6 partial · 4 fail.** *(Superseded: 5 pass · 7 partial · 1 fail after §9,
-then 7 pass · 6 partial · 0 fail after §9.6. Rows 6 and 8 now pass after §9.6/§9.8 —
-invoices and schedules move cash at the right time, and the three statements exist.)*
+**Result: 12 pass · 1 partial · 0 fail.** *(History: 3/6/4 at the first audit, 7/6/0 after §9.6, 12/1/0 now.)*
+Row 13 stays partial on purpose: detection is not prevention. Moving the simulation itself server-side, or
+signing the local save, is the remaining work — it is the honest boundary of the current design.
 
 ---
 
@@ -155,9 +158,9 @@ invoices and schedules move cash at the right time, and the three statements exi
 |---|---|---|
 | 1 | Vision & positioning | 🟡 Directionally aligned; "AI-powered" claim not true of the product |
 | 2 | Objectives & principles | 🟡 Interconnected consequences ✅, rules-based ✅, business-type adaptive 🟡, global/configurable ❌ |
-| 3 | Roles & permissions | 🔴 Missing (single player role; admin key only) |
-| 4 | Player journey & game modes | 🟡 Journey ≈ steps 4–11 playable; **no guided/career/challenge/cohort/team/sandbox/executive mode switch**; steps 1–3 (discovery, validation) only as text in onboarding |
-| 5 | World & industry templates | 🟡 2.5D city with 8 landmarks; 4 of 8 industries; no template framework |
+| 3 | Roles & permissions | 🟡 Three roles with a published, enforced permission matrix (§9.21) and an instructor code (§9.3); no role-assignment UI and no per-course scopes |
+| 4 | Player journey & game modes | 🟡 Journey ≈ steps 4–11 playable; **scenario packs give configured runs** (guided/hardcore/standard, fixed seeds) and cohorts share one, but there is no explicit mode switch for career/challenge/team/sandbox/executive; steps 1–3 only as text in onboarding |
+| 5 | World & industry templates | 🟡 2.5D city with 8 landmarks; **8 of 8 industries** with their own suppliers, competitors and credit terms (§9.17); no template framework |
 | 6.1 | Strategy & planning | 🟡 Strategy pick at start; no mission/vision/OKRs/quarterly review/SWOT/risk register |
 | 6.2 | Operations | 🟡 Inventory/stockouts/suppliers only |
 | 6.3 | Marketing | 🔴 Budget slider only |
@@ -644,3 +647,295 @@ pointing at its own object), the figures on the page are the figures in the run,
 `( ) \` is correct, filenames cannot escape the download directory, the client and server rubric lists match, and
 the six weights sum to 100 with the boundary grades (25/75/100). `verify:api` now asserts six criteria from
 `/api/rubric`, the 25/20/15/15/15/10 weights, a six-entry breakdown, legacy acceptance and the six CSV columns.
+
+### 9.17 Scenario packs, four more industries, and an accounting bug the wider sweep found — **implemented**
+
+**Industries (§ scope: "manufacturing, agriculture, health, education").** `IndustryId` went from four to
+eight, each with its own demand, price, cost per customer, elasticity, inventory flag, seasonality and credit
+terms:
+
+| Industry | Starting cash | Starting customers | Price | Valuation multiple | Inventory | Credit terms |
+|---|---|---|---|---|---|---|
+| Manufacturing | ₦240 000 | 6 | ₦1 400 | 4.5× | yes | 50% on 45 days |
+| Agriculture | ₦190 000 | 22 | ₦420 | 3.0× | yes | 30% on 30 days |
+| Health & wellness | ₦220 000 | 14 | ₦950 | 5.0× | no | 40% on 30 days |
+| Education & training | ₦165 000 | 55 | ₦190 | 3.4× | no | 10% on 15 days |
+
+Each also carries its own supplier pool, competitor pool, marketing-channel fit and icon, and each appears in
+the instructor scenario form and the backend industry allow-list (`backend/replay.ts`) — that allow-list is what
+the server replay validates a saved run against, so a new industry that skipped it would have failed replay.
+
+**Scenarios as data (§11.1).** `src/game/scenarios.ts` holds eight packs, each a *starting position plus a small
+set of objectives*, never a fork of the engine:
+
+| Pack | Industry | Difficulty | Window | Theme |
+|---|---|---|---|---|
+| The cash crunch | Retail | hardcore | 6 months | Survive on shrinking runway |
+| The growth engine | SaaS | standard | 9 | Spend into demand without losing the plot |
+| The capacity wall | Logistics | standard | 8 | Growth meets a hard ceiling |
+| The harvest | Agriculture | hardcore | 6 | Seasonal revenue, lumpy cash |
+| Clinic trust | Health | standard | 9 | Quality and reputation over volume |
+| Factory floor | Manufacturing | hardcore | 6 | Lead times, payables, working capital |
+| First cohort | Education | guided | 6 | A gentle first run |
+| Table for two | Restaurant | standard | 6 | Thin margins, high churn |
+
+A pack sets industry, strategy, difficulty, seed, starting cash, starting customers, optional price and debt;
+`startGame({ scenarioId })` applies them and tags the run (`game.scenario`) with the id, title, window and
+**`ruleVersion` ('2026.11')** so an old grade stays interpretable after a rule change. Objectives are measured
+from state the engine already produces — cash, customers, reputation, quality, net profit, valuation, months
+survived, contracts — so the debrief cannot disagree with the run. The verdict appears in the run-end modal and
+on the scorecard PDF; the instructor panel's "Start from a scenario pack" select fills every field of the
+existing custom-scenario form and persists `packId`, which the student's onboarding then locks to.
+
+**The bug.** Widening `verify-statements` from four industries to all eight immediately failed manufacturing:
+the balance sheet was off by ₦54 every month. The cause was real — closing stock is valued as
+`round(units × unit cost)` while COGS is expensed from a separate customer-count formula, and when the valuation
+implied *more* stock was consumed than had been expensed, `Math.max(0, cogs + inventoryDelta)` clamped the
+purchase figure to zero and the shortfall vanished: inventory left the sheet and equity survived it. The fix
+books that residual as COGS (`bookedCogs`), so assets and equity move together. This is exactly the class of
+defect that only appears when coverage widens — it had been invisible in the four original industries.
+
+**Verification.** New suite `verify:scenarios` (108 checks): pack schema (unique ids/seeds, all eight industries
+covered, windows 4–12 months, 3–5 objectives per pack, metrics and targets well formed), pack-overrides-caller
+precedence, free play staying untagged, six-month determinism per pack (same pack + same decisions = same
+run), the verdict recomputing every objective from state, and a JSON save round-trip keeping the scenario and
+its verdict. `verify:statements` now sweeps all eight industries (68 checks). The gate is **15 suites, 0
+failures**; wiring is 23/23 client calls resolved.
+
+### 9.18 Real-browser journeys and axe accessibility — **implemented and green in CI**
+
+`verify:render` server-renders components from a real game state, and `verify:contrast` checks the token pairs
+the UI uses — but neither touches a browser, so focus order, accessible names produced by the DOM and the
+actual click path were untested. That gap is now closed:
+
+| File | What it does |
+|---|---|
+| `playwright.config.ts` | Chromium, one worker, reduced motion, starts the API and the Vite dev server itself (reusing running ones), traces and screenshots on failure |
+| `e2e/onboarding.spec.ts` | The Instructor link goes straight to `/lecturer`; a profile leads to the scenario picker; picking a pack shows its brief, window and objectives *and* collapses the industry grid to that pack's industry; clearing the chip restores free play |
+| `e2e/a11y.spec.ts` | axe-core (WCAG 2.0/2.1 A + AA) over the landing page, both onboarding steps and the instructor sign-in; `serious`/`critical` violations fail with their targets in the message, `moderate` findings are printed |
+| `scripts/verify-e2e.mjs` | `npm run verify:e2e` — runs the suite, or skips with an explicit message when no browser is installed. It never reports a pass it did not earn |
+| `scripts/e2e-summary.mjs` | Turns the Playwright JSON report into `::error` annotations, so a failing run explains itself in `gh run view` even when the artifact cannot be downloaded |
+| `.github/workflows/verify.yml` | A separate `e2e` job installs Chromium and runs the suite, so the fast `verify` job stays network-light |
+
+**Status.** This sandbox cannot reach Playwright's CDN, so the suite was written and iterated through CI rather
+than locally. It found real defects on the way, and each was fixed rather than suppressed:
+
+1. **Success buttons failed contrast** — white on `#17C995` measured 2.13:1. The `lime` button variant now uses
+   ink text (8.7:1), keeping white only on the darker hover fill.
+2. **Instructor sign-in labels** — `white/45` on the lifted dark card measured 4.25:1; now `ink-300` (7.49:1).
+3. **Onboarding step labels** — `ink-300` on light paper measured 2.19:1; future steps use `ink-400`.
+4. **Landing avatar initials** — white on mid-tone fills (3.39–4.41:1); the palette is dark enough now.
+5. **Landing live feed** — rows faded with `opacity-45`, dragging `ink-400` text to 2.7:1; rows are no longer
+   faded. The tag also failed while an entrance animation was mid-fade, so axe now runs under reduced motion
+   after a settle delay.
+6. **City landmark buttons** — `aria-label` omitted the visible short name (`label-content-name-mismatch`), and
+   the icon-only arrow to `/play` had no accessible name (`link-name`). Both fixed.
+7. **Muted text across the app** — every `text-white/30–45` became `text-white/60`; below 50% white on `ink-950`
+   the ratio falls under AA. `verify:contrast` now scans `src/` for that pattern (26 token pairs + a source scan)
+   so the arithmetic gate catches it too, not just axe.
+
+**Verified.** The `e2e` job is green on PR #5: 7 tests, 4 axe scans, no serious or critical violations on any
+page audited.
+
+### 9.19 Cohort comparison and competency profiles over time — **implemented**
+
+Grades answered "what did this student get". They could not answer "where is this cohort weak", "who is
+improving", or "how generous is my marking" — the questions an examiner or a programme lead actually asks.
+
+**Grade history.** `ClassroomRecord` now keeps the last 20 grades (`history[]`: timestamp, grade, engine score
+at grading time, rubric levels, rationale). The latest rubric alone cannot show development; a sequence can.
+Existing records simply have no history until their next grade, so nothing is migrated or invented.
+
+**`GET /api/classes/:id/comparison`** (instructor only — students get 403) is derived entirely from the roster
+and that history, so the summary cannot drift from the marks it summarises:
+
+| Section | Content |
+|---|---|
+| Headline | cohort size, students trading, graded count, rubric-graded count |
+| Scoring | mean instructor grade, mean engine score, **marking delta** (instructor minus engine) |
+| Competencies | per competency: mean level 1–4, level distribution, share at or above Proficient (≥3) |
+| Distribution | engine score in five bands (0–39, 40–54, 55–69, 70–84, 85–100) |
+| Trust | integrity counts (verified / flagged / broken chain), seed matches, replay verdicts |
+| Profiles | per student: latest levels, recomputed weighted grade, grade history and the first-to-latest trend |
+
+**UI.** `ComparisonCard` in the instructor portal renders all of it: competency bars stacked by level, the score
+band chart, the trust counts, and a per-student table with a trend figure and six mini level bars. It loads with
+the roster and refreshes after every grade, so the panel and the table below it always describe the same marks.
+
+**Verification.** `verify:api` gained 16 checks (97 total, 0 failures): students are refused, the six competencies
+and their 25/20/15/15/15/10 weights are present, bucket counts sum to the cohort rather than the graded subset,
+the competency means and proficient shares match recorded levels, the profile recomputes the weighted grade,
+every grade is retained in history, and the trend equals latest minus first. Wiring is now **24/24** client calls
+resolved.
+
+### 9.20 LTI Advantage passback (AGS) — **implemented, verified against a stub platform**
+
+Marks had to leave the app to be useful in a course. This implements the grade passback half of LTI Advantage
+(Assignment and Grade Services):
+
+| Piece | Where |
+|---|---|
+| Platform keypair, created once and persisted (`kid`, public JWK, PKCS#8 private key) | `ensureLtiKeys` in `backend/lti.ts` |
+| Public verification set the LMS fetches anonymously | `GET /api/lti/jwks` |
+| RS256 client assertion: `iss`, `sub`, `aud` = token URL, `iat`, 5-minute `exp`, `jti` | `signAssertion` |
+| OAuth2 client-credentials exchange, then an AGS score document | `passbackScore` |
+| Per-cohort platform config (instructor only) and a recorded passback | `POST /api/classes/:id/lti`, `POST …/lti/passback` |
+| UI: save platform, **preview** (default), send (confirmed), unlink | `LtiCard` in `Lecturer.tsx` |
+
+A grade that leaves the building is written to that student's audit chain (`lti_passback`), so the passback is
+as traceable as the mark it carries. A dry run returns the exact assertion header/claims and score payload
+without opening a socket — the UI defaults to it because a sent grade cannot be recalled.
+
+**Honest scope.** The OIDC `id_token` launch (login initiation and validation of the platform's signature),
+Deep Linking and NRPS are **not** implemented; a cohort is configured with the platform's endpoints instead.
+There is no retry queue: one student per call, and failures are reported per student rather than retried.
+
+**Verification.** `verify:api` gained 22 checks (119 total, 0 failures). The passback is exercised end to end
+against a **stub LMS started by the test**: it fetches our JWKS, verifies the RS256 signature with the published
+key, checks the claims (issuer, client, audience, five-minute expiry), returns a token, and asserts the score
+arrives with the AGS content type, the bearer token and a 100-point maximum. It also proves the platform config
+is instructor-only (students get 403), that malformed URLs and unconfigured cohorts are refused, that a sent
+grade reaches the audit chain, and that an unreachable platform fails per student instead of throwing. Wiring is
+now **26/26** client calls resolved.
+
+### 9.21 Role-based access control — **implemented**
+
+Three roles existed (learner, instructor, administrator) but the rules were ad hoc: an `isInstructor` helper at
+each route and a shared `x-admin-key` header for the admin surface. Two consequences, both real: an instructor
+holding the deployment key had the admin console, and an `admin` role account could not use it **without** the
+key.
+
+`backend/rbac.ts` now holds the only copy of the rule:
+
+| Role | Permissions |
+|---|---|
+| Learner | `company:write`, `cohort:read`, `rubric:read` |
+| Instructor | learner's + `cohort:manage`, `grade:write`, `replay:read`, `lti:manage` |
+| Administrator | all nine, including `admin:read` and `admin:configure` |
+
+Route guards ask `can(player, permission)` instead of comparing role strings: cohort creation and the
+instructor-owned class actions use `cohort:manage`, roster visibility uses `replay:read`, and the admin surface
+accepts **either** an administrator session with `admin:read`/`admin:configure` **or** the deployment key (kept
+for operators and scripts, which is what it was always for). `GET /api/rbac` publishes the matrix, `GET /api/me`
+returns the caller's own permissions, and the instructor portal renders the same table, so the rules are visible
+rather than implied.
+
+**Verification.** `verify:api` gained 13 checks (132 total, 0 failures): the matrix is published and internally
+consistent (every role names known permissions, instructor ⊇ learner, administrator = all of them), learners
+hold no grading, LTI or platform permission, the session advertises its permissions, an instructor without the
+key is refused by the admin console, an administrator role is accepted without one, and the deployment key still
+works. Wiring is **27/27**.
+
+**Not done, and stated plainly:** permissions are per role, not per record beyond the existing "my own students"
+checks, there is no role assignment UI (roles come from registration/dev sign-in), and there are no per-department
+or per-course scopes.
+
+### 9.22 Postgres storage, ready for Neon — **implemented and verified against real Postgres**
+
+The API had one datastore: a JSON file next to the server. That is fine for a
+developer and wrong for a cohort of students — one process writing one document,
+no concurrency control, no queryable records, no backup story beyond copying a
+file.
+
+**One seam, two drivers.** `backend/store.ts` is now a facade over
+`loadDatabase()` / `saveDatabase()`; `backend/db/index.ts` chooses the driver from
+`DATABASE_URL` (or `NEON_DATABASE_URL`). No route changed. The JSON driver stays:
+running the whole app with no database is a useful property, not scaffolding. The
+boot log states which driver is live, and a bad URL fails with one readable line
+(`Storage is not reachable (postgres): connect ECONNREFUSED …`) instead of a pool
+stack trace.
+
+**Schema** (`backend/db/schema.sql`): one row per aggregate with the domain object
+in `jsonb`, and the fields that are actually queried lifted into real columns —
+`players.account_email` (generated), `players.role`, `sessions.token/expires_at`,
+`companies.player_id/sector/status`, `classes.lecturer_id`, plus `class_students`
+and `classroom_records` as real tables so membership and grades are SQL, not a
+scan of a class document. `lti_keys` holds the LTI signing key; `app_meta` holds
+the schema version. Everything is `if not exists`, so `npm run db:migrate` is
+safe on every deploy. `docs/database.md` documents the mapping, the Neon setup,
+the pooled-vs-direct endpoint choice, and rollback by branch.
+
+**Writes are incremental.** The driver remembers the canonical JSON of each row it
+has written (`canonicalJson`, keys sorted — `jsonb` does not preserve key order)
+and a save touches only changed rows, then prunes removed ones, in one transaction
+in dependency order. A month commit that changes one company writes one row.
+
+**Verified against real Postgres.** `verify:db` (in `npm run verify`) runs the
+schema and the driver against **PGlite — Postgres compiled to WASM, in-process** —
+so the DDL, `on conflict` upserts, foreign keys, deletions and `jsonb` round-trip
+are exercised by an actual Postgres, not a mock. 22 checks: schema applies and
+every declared table exists; a full database round-trips unchanged (grade history
+and the LTI private key included); a one-row change writes one row; an unchanged
+save writes nothing; deleting a company removes its NPCs and leaves no orphans;
+membership and grades are queryable; idempotency keys are unique per player; both
+drivers return the same database for the same fixture.
+
+**Honest limits.** No live Neon endpoint was contacted — this sandbox cannot reach
+`*.neon.tech`, so TLS, pooling, cold start and branch switching are unverified
+until the first deployment is smoke-tested — which is what `npm run db:smoke` is for: connection, TLS, the 12
+tables, the schema version, and a write/read/delete of one probe row, with timings. There is no down-migration (rollback
+is a Neon branch). And the simulation still runs in the browser: Postgres stores
+the authoritative records, it does not make the run itself server-side — that is
+still the remaining work named in §4 row 13.
+
+### 9.23 Supabase as the target, and the pooling bug that decision exposed — **implemented**
+
+The database target moved from Neon to Supabase. Both speak Postgres, so the driver
+survives unchanged — but choosing a managed, *pooled* endpoint forced a real defect
+into the open.
+
+**The bug: transactions were not pinned to a connection.** The driver issued
+`BEGIN`, the upserts and `COMMIT` through `pool.query()`. `pg`'s pool may hand out a
+*different* backend connection per call, so under Supavisor/PgBouncer the
+transaction can open on one connection and commit on another — or, worse, the
+inserts run outside the transaction entirely. Against a single-connection database
+(as in `verify:db`) it looks perfect. It would have failed exactly where it matters:
+in production, under load, partially.
+
+The fix: `PostgresStore` now leases one client for the whole save
+(`pool.connect()`), runs everything on it, releases on both the success and error
+paths, and **serialises saves** so two transactions cannot interleave. `verify:db`
+proves all of it with a fake pool that hands out distinct connections: one leased
+connection per transaction, `BEGIN`…`COMMIT` bracketed, released exactly once,
+rolled back and released on failure, no partial rows, and no overlap between
+concurrent saves.
+
+**Supabase-specific hardening.**
+
+| Concern | Handling |
+|---|---|
+| `public` is served over PostgREST to `anon` | The schema enables row-level security on all 12 tables (no policies = deny) **and** revokes `anon`/`authenticated` where those roles exist; `db:smoke` asserts on the live project that `anon` cannot select |
+| Transaction-mode pooler (6543) loses session state | No session-scoped `SET`: the statement timeout is `SET LOCAL` inside the transaction (`DB_STATEMENT_TIMEOUT_MS`); no named prepared statements |
+| Direct connections are IPv6-only on new projects | `docs/database.md` and `db:smoke` point at the pooler host and say why |
+| Keys | The API uses the Postgres connection string only — no anon key, no service-role key, no REST client |
+| Observability | `application_name=businesslife-api`, boot log names the live driver, connection logs show the client |
+
+**Connecting a project.** `SUPABASE_DB_URL` in a gitignored `.env` is picked up
+by the API and by both `db:*` scripts (`process.loadEnvFile`, no dependency);
+anything already in the environment still wins, so deploy settings are never
+shadowed. Two rough edges are fixed: `pg` printed a security warning on every
+connection because Supabase copies `?sslmode=require` (the driver now rewrites it
+to `verify-full`, which is what it actually enforces — asserted in `verify:db`),
+and `db:migrate` used to die with a raw stack trace when the connection failed
+(now a one-line cause plus the four realistic ones: wrong password, IPv6-only
+direct host, paused project, wrong region).
+
+**The string people actually copy.** The first attempt at connecting produced the
+*project URL* and a publishable key — the panel next to the connection string — which
+are meaningless to a Postgres driver. `npm run db:smoke -- --check '<string>'`
+diagnoses a candidate offline and names the mistake: project URL, anon/publishable/
+service key, untouched `[YOUR-PASSWORD]`, a pooler user without `postgres.<ref>`, a
+broken percent-escape, a missing `sslmode`. Nine cases are pinned in
+`scripts/verify-db-url.mjs` inside `npm run verify`, so the advice cannot rot.
+
+**Tooling.** `npm run db:smoke` now detects the provider and pooler mode from the
+URL, warns when `sslmode` is omitted or when a migration is pointed at the
+transaction pooler, checks TLS, the 12 tables, the schema version and anon
+exposure, then writes/reads/deletes a probe row and runs a transaction with a
+local statement timeout. `db:migrate` warns if it is run through 6543.
+
+**Verified.** `verify:db` is now 31 checks against real Postgres (PGlite), green;
+the gate passes end to end. **Not verified:** a live Supabase endpoint — this
+sandbox cannot reach `*.supabase.co`, so TLS with their certificate, Supavisor
+behaviour, cold starts and PITR are untested until `db:smoke` is run on the real
+project. That gap is stated in `docs/database.md` rather than papered over.

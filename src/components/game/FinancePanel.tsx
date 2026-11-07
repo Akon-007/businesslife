@@ -674,7 +674,7 @@ function WhatIf({ statement, cash }: { statement: Statements; cash: number }) {
           <div className="col-span-2 rounded-xl bg-ink-900 px-3 py-2.5 text-white">
             <p className="text-[9.5px] font-bold uppercase tracking-[0.11em] text-white/50">Projected closing cash</p>
             <p className="figure mt-1 text-[17px] font-semibold tabular-nums">{money(projectedCash)}</p>
-            <p className="mt-0.5 text-[10px] text-white/45">
+            <p className="mt-0.5 text-[10px] text-white/60">
               {projectedCash >= cash ? '+' : '−'}{money(Math.abs(projectedCash - cash))} against today's {money(cash)}
             </p>
           </div>

@@ -17,6 +17,7 @@ import {
   roleById,
   strategyById,
 } from './data'
+import { embedScenario, scenarioById } from './scenarios'
 import { ALL_LEVELS } from './progression'
 import { BILL_SHARE, VENDORS, billDueMonth, buildStatements, openPayables, payBills, settleBills } from './accounting'
 import {
@@ -248,25 +249,31 @@ export function startGame(input: {
   seed?: number
   /** Scenario starting capital (₦). Overrides the industry/strategy default. */
   startingCash?: number
+  /** Start from a scenario pack: it fixes the industry, strategy, difficulty and seed. */
+  scenarioId?: string
 }): GameState {
-  const industry = industryById(input.industry)
-  const strategy = strategyById(input.strategy ?? 'product')
+  const pack = scenarioById(input.scenarioId)
+  const industry = industryById(pack?.industry ?? input.industry)
+  const strategy = strategyById(pack?.strategy ?? input.strategy ?? 'product')
   const background = founderBackgroundById(input.founderBackground ?? 'operator')
-  const difficulty = difficultyById(input.difficulty ?? 'standard')
+  const difficulty = difficultyById(pack?.difficulty ?? input.difficulty ?? 'standard')
   const startingQuality = clamp(industry.startingQuality + strategy.starting.quality + background.starting.quality, 15, 85)
   const startingReputation = clamp(48 + strategy.starting.reputation + background.starting.reputation, 10, 80)
   const derivedCash = Math.round(
     (industry.startingCash + strategy.starting.cash + background.starting.cash) * difficulty.cashMult,
   )
-  const startingCash = Number.isFinite(input.startingCash) && (input.startingCash ?? 0) > 0
-    ? Math.round(input.startingCash as number)
-    : derivedCash
-  const seed = input.seed ?? newSeed()
+  const startingCash = pack
+    ? pack.startingCash
+    : Number.isFinite(input.startingCash) && (input.startingCash ?? 0) > 0
+      ? Math.round(input.startingCash as number)
+      : derivedCash
+  // A pack fixes the seed so every cohort faces the same market.
+  const seed = pack?.seed ?? input.seed ?? newSeed()
   const bootstrap = rngFor(seed, 'bootstrap')
   const economyOffset = Math.floor(randWith(bootstrap, 0, 7))
-  const suppliers = makeSuppliers(input.industry)
+  const suppliers = makeSuppliers(industry.id)
   const startingCustomers =
-    industry.startingCustomers + strategy.starting.customers + background.starting.customers
+    pack?.startingCustomers ?? industry.startingCustomers + strategy.starting.customers + background.starting.customers
 
   const base: GameState = {
     version: SAVE_VERSION,
@@ -284,14 +291,14 @@ export function startGame(input: {
     founderBackground: background.id,
     difficulty: difficulty.id,
     company: input.company.trim() || 'Untitled Co.',
-    industry: input.industry,
+    industry: industry.id,
     strategy: strategy.id,
     month: 0,
     day: 1,
     cash: startingCash,
-    debt: 0,
-    customers: industry.startingCustomers + strategy.starting.customers + background.starting.customers,
-    price: industry.price,
+    debt: pack?.startingDebt ?? 0,
+    customers: startingCustomers,
+    price: pack?.startingPrice ?? industry.price,
     quality: startingQuality,
     reputation: startingReputation,
     morale: clamp(70 + background.starting.morale, 0, 100),
@@ -330,19 +337,20 @@ export function startGame(input: {
     supplierId: suppliers[0].id,
     inventory: industry.inventory ? 1.6 : 0,
     restockMonths: industry.inventory ? 1 : 0,
-    pipeline: [makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 1)), makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 2))],
+    pipeline: [makeDeal(industry.id, 0, rngFor(seed, 'pipeline', 0, 1)), makeDeal(industry.id, 0, rngFor(seed, 'pipeline', 0, 2))],
     pipelineWon: 0,
     leads: [],
     contracts: [],
     orders: industry.inventory
       ? [makeOrder({ id: 'po-0', supplierId: suppliers[0].id, cover: 1, month: 0, leadMonths: suppliers[0].leadMonths, slip: false })]
       : [],
-    competitors: makeCompetitors(input.industry),
+    competitors: makeCompetitors(industry.id),
     economy: economyForMonth(0, economyOffset),
     economyOffset,
     branches: BRANCH_OPTIONS.map((branch) => ({ ...branch })),
     beginner: createBeginnerProgress(),
     missionEvidence: [],
+    ...(pack ? { scenario: embedScenario(pack) } : {}),
   }
 
   const withValuation = acknowledgeMissionEvidence({ ...base, valuation: computeValuation(base) }, ['beginner-1-1', 'beginner-1-2', 'beginner-1-3', 'beginner-1-4', 'beginner-1-5', 'beginner-1-6'])
@@ -738,6 +746,11 @@ export const CREDIT_TERMS: Record<IndustryId, { share: number; terms: 15 | 30 | 
   logistics: { share: 0.44, terms: 45 },
   retail: { share: 0.16, terms: 15 },
   fnb: { share: 0.08, terms: 15 },
+  // Heavy B2B sectors invoice on long terms; education collects at enrolment.
+  manufacturing: { share: 0.5, terms: 45 },
+  agriculture: { share: 0.3, terms: 30 },
+  healthcare: { share: 0.4, terms: 30 },
+  education: { share: 0.1, terms: 15 },
 }
 
 /** An invoice falls due in the issuing month for 15-day terms, +1 month for 30, +2 for 45. */
@@ -967,7 +980,13 @@ export function advanceMonth(state: GameState): GameState {
   // cash leaves when the bill falls due. `billed` is the payable for this month.
   const inventoryValue = industry.inventory ? Math.max(0, Math.round(inventory * cogs)) : 0
   const inventoryDelta = inventoryValue - (state.inventoryValue ?? 0)
-  const stockPurchases = Math.max(0, cogs + inventoryDelta)
+  const rawStockPurchases = cogs + inventoryDelta
+  const stockPurchases = Math.max(0, rawStockPurchases)
+  // Rounding the closing stock valuation can imply that slightly more was sold
+  // than was expensed. That shortfall has to hit the P&L as well, otherwise
+  // inventory leaves the balance sheet and equity silently survives it.
+  const stockWriteOff = Math.min(cogs, Math.max(0, -rawStockPurchases))
+  const bookedCogs = cogs + stockWriteOff
   const billed = Math.round(stockPurchases * BILL_SHARE)
   const cashForStock = stockPurchases - billed
 
@@ -1157,7 +1176,7 @@ export function advanceMonth(state: GameState): GameState {
   }
   const emergencyFee = Math.round(emergencyBorrow * 0.12)
   const netProfit =
-    revenue - cogs - payrollBefore - overhead - depreciation - spoilage - badDebt - lateFees -
+    revenue - bookedCogs - payrollBefore - overhead - depreciation - spoilage - badDebt - lateFees -
     interest - emergencyFee + flows.otherIncome - flows.expenses
   const paidInCapital = (state.paidInCapital ?? 0) + flows.funding
   const retainedEarnings = (state.retainedEarnings ?? 0) + netProfit
@@ -1166,7 +1185,7 @@ export function advanceMonth(state: GameState): GameState {
     openingCash,
     closingCash: next.cash,
     revenue,
-    cogs,
+    cogs: bookedCogs,
     payroll: payrollBefore,
     overhead,
     marketing: state.marketingSpend ?? 0,
@@ -1376,6 +1395,12 @@ export function advanceMonth(state: GameState): GameState {
   }
 
   next = { ...next, lastReport: report }
+
+  // A scenario pack is an assessment window: once it elapses, the run closes so
+  // the debrief can be scored against the objectives it was given.
+  if (next.scenario && next.status === 'active' && next.month - next.scenario.startedMonth >= next.scenario.months) {
+    next = { ...next, status: 'completed' }
+  }
 
   return next
 }

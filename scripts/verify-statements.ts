@@ -21,7 +21,8 @@ import {
   takeLoan,
 } from '../src/game/engine'
 import { BILL_SHARE, openPayables, settleBills } from '../src/game/accounting'
-import type { GameState } from '../src/game/types'
+import { INDUSTRIES } from '../src/game/data'
+import type { GameState, IndustryId } from '../src/game/types'
 
 let failures = 0
 const check = (label: string, ok: boolean, detail = '') => {
@@ -42,7 +43,7 @@ const base = {
   accountEmail: 'ledger@test.local',
 }
 
-function play(industry: 'saas' | 'retail' | 'logistics' | 'fnb', seed: number, months: number) {
+function play(industry: IndustryId, seed: number, months: number) {
   let game: GameState = startGame({ ...base, industry, seed })
   const snapshots = []
   for (let month = 1; month <= months; month += 1) {
@@ -63,7 +64,8 @@ function advance(game: GameState): GameState {
 
 console.log('\nStatements: internal consistency\n')
 
-for (const industry of ['saas', 'retail', 'logistics', 'fnb'] as const) {
+// Every industry must produce coherent statements, not just the original four.
+for (const industry of INDUSTRIES.map((item) => item.id)) {
   const { game } = play(industry, 1234, 12)
   const statements = game.statements ?? []
   check(`${industry}: statements were produced`, statements.length >= 6, `${statements.length} months`)

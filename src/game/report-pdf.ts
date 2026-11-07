@@ -6,6 +6,7 @@
 import { A4, BRAND, CORAL, GOLD, INK, MUTED, PageBuilder, RULE, SUCCESS, buildPdf } from '../lib/pdf'
 import { RUBRIC, criterionPoints, localGrade, suggestRubric, type RubricScores } from './rubric'
 import { industryById } from './data'
+import { evaluateScenario, scenarioById } from './scenarios'
 import { getGrade, performanceScore } from './engine'
 import type { GameState, MonthReport } from './types'
 
@@ -168,6 +169,20 @@ export function scorecardPdf(
       { size: 9 },
     )
     page.line(`    ${suggested.evidence[criterion.id]}`, { size: 7.5, color: MUTED, gap: 11 })
+  }
+
+  const pack = scenarioById(game.scenario?.id)
+  if (pack) {
+    const verdict = evaluateScenario(game, pack)
+    section(page, `Scenario: ${pack.title} (${verdict.met}/${verdict.total} objectives)`)
+    page.line(`${pack.months}-month window · rule version ${pack.ruleVersion} · seed ${pack.seed}`, { size: 7.5, color: MUTED, gap: 11 })
+    for (const result of verdict.results) {
+      page.pair(
+        `${result.met ? 'MET' : 'MISSED'} - ${result.objective.label}`,
+        `actual ${result.actual.toLocaleString('en-NG')} vs target ${result.objective.target.toLocaleString('en-NG')}`,
+        { size: 8.5 },
+      )
+    }
   }
 
   section(page, 'Where it stands')
