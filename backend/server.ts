@@ -14,6 +14,7 @@ import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthori
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
 import { comparisonFor, recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
 import { ltiJwks, parseLtiConfig, passbackScore } from './lti.js'
+import { can, permissionsFor, roleMatrix } from './rbac.js'
 import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
 import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
@@ -59,7 +60,9 @@ function ownedCompany(database: Database, player: Player, id: string) {
 }
 
 function isInstructor(player: Player) {
-  return player.role === 'instructor' || player.role === 'admin'
+  // Kept as a named alias so the intent at each call site stays readable; the
+  // rule itself lives in one place (backend/rbac.ts).
+  return can(player, 'cohort:manage')
 }
 
 /** An instructor may read (never write) companies belonging to their own students. */
@@ -223,13 +226,14 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   }
   const player = auth(request, database)
   if (!player) { error(response, 401, 'Authentication required. Sign in to continue.'); return }
-  if (request.method === 'GET' && path === '/api/me') { send(response, 200, publicPlayer(player)); return }
+  if (request.method === 'GET' && path === '/api/me') { send(response, 200, { ...publicPlayer(player), permissions: [...permissionsFor(player.role)] }); return }
+  if (request.method === 'GET' && path === '/api/rbac') { send(response, 200, { ...roleMatrix(), mine: { role: player.role, permissions: [...permissionsFor(player.role)] } }); return }
   if (path === '/api/classes' && request.method === 'GET') {
     const classrooms = database.classes.filter((item) => item.lecturerId === player.id || item.studentIds.includes(player.id))
-    send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: isInstructor(player) ? rosterFor(database, item) : undefined })) }); return
+    send(response, 200, { classes: classrooms.map((item) => ({ ...item, roster: can(player, 'replay:read') ? rosterFor(database, item) : undefined })) }); return
   }
   if (path === '/api/classes' && request.method === 'POST') {
-    if (!isInstructor(player)) { error(response, 403, 'Instructor access required. Sign in with an instructor account to create cohorts.'); return }
+    if (!can(player, 'cohort:manage')) { error(response, 403, 'Instructor access required. Sign in with an instructor account to create cohorts.'); return }
     const input = await body(request); required(input, ['name']); const classroom = { id: newId('class'), lecturerId: player.id, name: String(input.name).trim().slice(0, 80), studentIds: [] as string[], scenario: null, createdAt: now(), records: [] }; database.classes.push(classroom)
     await saveDatabase(database); send(response, 201, classroom); return
   }
@@ -237,7 +241,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   if (classMatch) {
     const classroom = database.classes.find((item) => item.id === classMatch[1] && (item.lecturerId === player.id || item.studentIds.includes(player.id))); if (!classroom) { error(response, 404, 'Class not found.'); return }
     const action = classMatch[2] ?? ''
-    const lecturer = classroom.lecturerId === player.id && isInstructor(player)
+    const lecturer = classroom.lecturerId === player.id && can(player, 'cohort:manage')
     if (request.method === 'GET' && !action) { send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return }
     if (request.method === 'POST' && action === 'lti') {
       if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
@@ -777,7 +781,11 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
   }
   if (request.method === 'GET' && /^\/api\/companies\/[^/]+\/financial-reports$/.test(path)) { const company = ownedCompany(database, player, path.split('/')[3]); if (!company) { error(response, 404, 'Company not found.'); return } send(response, 200, { revenue: company.revenue, expenses: company.expenses, balance: company.balance, balanceKobo: company.balanceKobo, revenueKobo: company.revenueKobo, expensesKobo: company.expensesKobo, net: company.revenue - company.expenses, breakEven: breakEven(company), transactions: company.transactions, journal: company.journal }); return }
   if (path.startsWith('/api/admin/')) {
-    if (request.headers['x-admin-key'] !== (process.env.ADMIN_KEY ?? 'dev-admin')) { error(response, 403, 'Administrator access required.'); return }
+    // Two ways in: an administrator session with the permission, or the
+    // deployment's admin key for operators and scripts.
+    const keyed = request.headers['x-admin-key'] === (process.env.ADMIN_KEY ?? 'dev-admin')
+    if (!keyed && !can(player, 'admin:read')) { error(response, 403, 'Administrator access required.'); return }
+    if (request.method !== 'GET' && !keyed && !can(player, 'admin:configure')) { error(response, 403, 'Administrator access required.'); return }
     if (request.method === 'GET' && path === '/api/admin/config') { send(response, 200, { stage: stageSummary(), city: database.city }); return }
     if (request.method === 'GET' && path === '/api/admin/activity') { send(response, 200, { events: database.companies.flatMap((company) => company.events.map((item) => ({ companyId: company.id, ...item }))).slice(0, 500) }); return }
     if (request.method === 'POST' && path === '/api/admin/events') { const input = await body(request); database.city.events.unshift({ id: newId('city-event'), createdAt: now(), ...input }); await saveDatabase(database); send(response, 201, database.city.events[0]); return }

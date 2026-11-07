@@ -158,7 +158,7 @@ signing the local save, is the remaining work — it is the honest boundary of t
 |---|---|---|
 | 1 | Vision & positioning | 🟡 Directionally aligned; "AI-powered" claim not true of the product |
 | 2 | Objectives & principles | 🟡 Interconnected consequences ✅, rules-based ✅, business-type adaptive 🟡, global/configurable ❌ |
-| 3 | Roles & permissions | 🟡 Learner / instructor / admin roles exist with route guards and an instructor code (§9.3); no granular per-permission model |
+| 3 | Roles & permissions | 🟡 Three roles with a published, enforced permission matrix (§9.21) and an instructor code (§9.3); no role-assignment UI and no per-course scopes |
 | 4 | Player journey & game modes | 🟡 Journey ≈ steps 4–11 playable; **scenario packs give configured runs** (guided/hardcore/standard, fixed seeds) and cohorts share one, but there is no explicit mode switch for career/challenge/team/sandbox/executive; steps 1–3 only as text in onboarding |
 | 5 | World & industry templates | 🟡 2.5D city with 8 landmarks; **8 of 8 industries** with their own suppliers, competitors and credit terms (§9.17); no template framework |
 | 6.1 | Strategy & planning | 🟡 Strategy pick at start; no mission/vision/OKRs/quarterly review/SWOT/risk register |
@@ -797,3 +797,35 @@ arrives with the AGS content type, the bearer token and a 100-point maximum. It 
 is instructor-only (students get 403), that malformed URLs and unconfigured cohorts are refused, that a sent
 grade reaches the audit chain, and that an unreachable platform fails per student instead of throwing. Wiring is
 now **26/26** client calls resolved.
+
+### 9.21 Role-based access control — **implemented**
+
+Three roles existed (learner, instructor, administrator) but the rules were ad hoc: an `isInstructor` helper at
+each route and a shared `x-admin-key` header for the admin surface. Two consequences, both real: an instructor
+holding the deployment key had the admin console, and an `admin` role account could not use it **without** the
+key.
+
+`backend/rbac.ts` now holds the only copy of the rule:
+
+| Role | Permissions |
+|---|---|
+| Learner | `company:write`, `cohort:read`, `rubric:read` |
+| Instructor | learner's + `cohort:manage`, `grade:write`, `replay:read`, `lti:manage` |
+| Administrator | all nine, including `admin:read` and `admin:configure` |
+
+Route guards ask `can(player, permission)` instead of comparing role strings: cohort creation and the
+instructor-owned class actions use `cohort:manage`, roster visibility uses `replay:read`, and the admin surface
+accepts **either** an administrator session with `admin:read`/`admin:configure` **or** the deployment key (kept
+for operators and scripts, which is what it was always for). `GET /api/rbac` publishes the matrix, `GET /api/me`
+returns the caller's own permissions, and the instructor portal renders the same table, so the rules are visible
+rather than implied.
+
+**Verification.** `verify:api` gained 13 checks (132 total, 0 failures): the matrix is published and internally
+consistent (every role names known permissions, instructor ⊇ learner, administrator = all of them), learners
+hold no grading, LTI or platform permission, the session advertises its permissions, an instructor without the
+key is refused by the admin console, an administrator role is accepted without one, and the deployment key still
+works. Wiring is **27/27**.
+
+**Not done, and stated plainly:** permissions are per role, not per record beyond the existing "my own students"
+checks, there is no role assignment UI (roles come from registration/dev sign-in), and there are no per-department
+or per-course scopes.

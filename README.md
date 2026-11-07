@@ -61,6 +61,7 @@ job installs Chromium and runs the Playwright journeys and the axe accessibility
 | Operations: purchase orders, lead times, capacity, returns | `src/game/supply.ts`, `src/components/game/OperationsPanel.tsx` |
 | Sales funnel: leads, qualification, quotes, retainers | `src/game/sales.ts`, `src/components/game/SalesFunnel.tsx` |
 | Scenario packs: eight starting positions, objectives, rule version | `src/game/scenarios.ts`, `src/components/game/Onboarding.tsx` |
+| Roles and permissions (one matrix, enforced by every guard) | `backend/rbac.ts`, `GET /api/rbac`, `RoleCard` in `src/pages/Lecturer.tsx` |
 | LTI Advantage passback (keys, assertion, AGS score) | `backend/lti.ts`, `LtiCard` in `src/pages/Lecturer.tsx` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |

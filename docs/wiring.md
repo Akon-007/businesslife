@@ -4,7 +4,7 @@ What the browser actually calls, what the server exposes, and which side of the 
 `npm run verify:wiring` derives the "client calls" column from source and **fails if a client path has no
 server route** — so this table cannot silently drift.
 
-Last verified against the running suite: 26 client calls all resolve, 14 server routes have no client caller.
+Last verified against the running suite: 27 client calls all resolve, 14 server routes have no client caller.
 
 ## Player-facing features (wired)
 
@@ -25,6 +25,7 @@ Last verified against the running suite: 26 client calls all resolve, 14 server 
 | **Operations: purchase orders, expedite, capacity capex** | `OperationsPanel` → `placeOrder` / `expediteOrder` / `cancelOrder` / `investCapacity` (journaled) + `syncCompanyAction('operations/orders')` | `POST /api/companies/:id/operations/orders`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | **Sales funnel** | `SalesFunnel` → `qualifyLead` / `sendQuote` / `dropLead` (journaled) + `syncCompanyAction('sales/funnel')` | `POST /api/companies/:id/sales/funnel`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | **Scenario packs (8) + four new industries** | `Onboarding` pack picker → `store.start({ scenarioId })` → `startGame` (pack fixes industry, strategy, difficulty, seed, cash, demand); instructor `ScenarioPanel` assigns `packId` | `POST /api/classes/:id/scenario` (packId persisted); the run itself rides in `PUT /run` | `verify:scenarios`, `verify:statements` (all 8 industries), `verify:api` |
+| **Roles & permissions** | `fetchRoleMatrix` → `RoleCard` in `Lecturer.tsx` renders the same matrix the server enforces | `GET /api/rbac`; `GET /api/me` also returns the caller's permissions | `verify:api` (13 checks) |
 | **LTI Advantage passback** | `configureLti` / `passbackGrades` → `LtiCard` in `Lecturer.tsx` (preview is the default; sending asks for confirmation) | `POST /api/classes/:id/lti`, `POST …/lti/passback`; the LMS fetches `GET /api/lti/jwks` anonymously | `verify:api` (22 checks, including a stub platform that verifies our RS256 assertion) |
 | **Cohort comparison + competency profiles** | `fetchComparison` (instructor) → `ComparisonCard` in `Lecturer.tsx` | `GET /api/classes/:id/comparison` (instructor only; 403 for students) | `verify:api` |
 | Instructor cohorts | `listCohorts`, `createCohort`, `inviteStudents`, `setScenario`, `fetchRoster`, `gradeStudent`, `resetStudent`, `exportRoster` | `GET/POST /api/classes`, `POST /api/classes/:id/{invite,scenario,grade,reset}`, `GET /api/classes/:id/roster`, `GET …/export.csv` | `verify:api`, `verify:auth` |

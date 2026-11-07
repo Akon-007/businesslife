@@ -407,6 +407,17 @@ export function fetchComparison(classId: string): Promise<CohortComparison> {
   return request(`/api/classes/${classId}/comparison`, { scope: 'instructor' })
 }
 
+export interface RoleMatrix {
+  permissions: string[]
+  roles: { role: 'learner' | 'instructor' | 'admin'; permissions: string[] }[]
+  mine: { role: 'learner' | 'instructor' | 'admin'; permissions: string[] }
+}
+
+/** Who may do what. Used by the instructor portal so the rules are visible. */
+export function fetchRoleMatrix(): Promise<RoleMatrix> {
+  return request('/api/rbac', { scope: 'instructor' })
+}
+
 export interface LtiConfig {
   issuer: string
   clientId: string

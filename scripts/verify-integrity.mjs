@@ -26,8 +26,8 @@ function check(name, condition, detail = '') {
   }
 }
 
-async function call(path, { method = 'GET', token, body, raw = false } = {}) {
-  const headers = { 'content-type': 'application/json' }
+async function call(path, { method = 'GET', token, body, raw = false, headers: extra = {} } = {}) {
+  const headers = { 'content-type': 'application/json', ...extra }
   if (token) headers.authorization = `Bearer ${token}`
   const response = await fetch(`${API}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined })
   if (raw) return { status: response.status, text: await response.text(), headers: response.headers }
@@ -395,6 +395,39 @@ async function main() {
 
   const unlinked = await call(`/api/classes/${classId}/lti`, { method: 'POST', token: instructor.token, body: { clear: true } })
   check('the platform configuration can be removed', unlinked.status === 200 && unlinked.body?.lti === null)
+
+  console.log('\nRoles and permissions')
+
+  const matrix = await call('/api/rbac', { token: learner.token })
+  const roles = matrix.body?.roles ?? []
+  const perms = matrix.body?.permissions ?? []
+  check('the permission matrix is published', matrix.status === 200 && perms.length >= 8 && roles.length === 3, `${perms.length} permissions, ${roles.length} roles`)
+  const byRole = Object.fromEntries(roles.map((entry) => [entry.role, entry.permissions]))
+  check('every role names only known permissions', roles.every((entry) => entry.permissions.every((permission) => perms.includes(permission))))
+  check(
+    'instructor permissions include everything a learner has',
+    (byRole.learner ?? []).every((permission) => (byRole.instructor ?? []).includes(permission)),
+  )
+  check(
+    'admin is a superset of instructor',
+    (byRole.instructor ?? []).every((permission) => (byRole.admin ?? []).includes(permission)) && (byRole.admin ?? []).length === perms.length,
+  )
+  check('learners may not grade', !(byRole.learner ?? []).includes('grade:write'))
+  check('learners may not configure an LMS', !(byRole.learner ?? []).includes('lti:manage'))
+  check('learners may not configure the platform', !(byRole.learner ?? []).includes('admin:configure'))
+  check('the caller sees their own permissions', matrix.body?.mine?.role === 'learner' && (matrix.body?.mine?.permissions ?? []).includes('company:write'))
+  const me = await call('/api/me', { token: instructor.token })
+  check('the session advertises its permissions', (me.body?.permissions ?? []).includes('cohort:manage'), JSON.stringify(me.body?.permissions))
+
+  const instructorAdmin = await call('/api/admin/config', { token: instructor.token })
+  check('an instructor without the admin key cannot read the admin console', instructorAdmin.status === 403, `status ${instructorAdmin.status}`)
+  const adminPlayer = await login(`Audit Admin`, { role: 'admin' })
+  const adminRead = await call('/api/admin/config', { token: adminPlayer.token })
+  check('an administrator role reaches the admin console without a key', adminRead.status === 200, `status ${adminRead.status}`)
+  const adminWrite = await call('/api/admin/events', { method: 'POST', token: adminPlayer.token, body: { title: 'Audit event' } })
+  check('an administrator may configure the platform', adminWrite.status === 201, `status ${adminWrite.status}`)
+  const keyedWrite = await call('/api/admin/events', { method: 'POST', token: learner.token, body: { title: 'Key event' }, headers: { 'x-admin-key': 'dev-admin' } })
+  check('the deployment admin key still works for operators', keyedWrite.status === 201, `status ${keyedWrite.status}`)
 
   const reset = await call(`/api/classes/${classId}/reset`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id } })
   check('instructor resets a run', reset.status === 200 && reset.body?.authority?.score === 0, JSON.stringify(reset.body?.authority))

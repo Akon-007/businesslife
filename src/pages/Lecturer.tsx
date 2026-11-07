@@ -23,6 +23,8 @@ import {
   downloadRosterCsv,
   configureLti,
   fetchComparison,
+  fetchRoleMatrix,
+  type RoleMatrix,
   fetchReplay,
   passbackGrades,
   type LtiPassbackResult,
@@ -269,6 +271,7 @@ export default function Lecturer() {
               />
               {comparison ? <ComparisonCard comparison={comparison} /> : null}
               <LtiCard cohort={selected} onSaved={() => void refresh(selected.id)} />
+              <RoleCard />
             </>
           )}
         </section>
@@ -1122,6 +1125,64 @@ function LtiCard({ cohort, onSaved }: { cohort: Cohort; onSaved: () => void }) {
           ))}
         </ul>
       ) : null}
+    </section>
+  )
+}
+
+/**
+ * The permission matrix, on screen.
+ *
+ * Access rules that only exist in code are rules nobody can check. This renders
+ * the same table the server enforces (`backend/rbac.ts`), so an instructor can
+ * see that grading is theirs and that platform settings are not.
+ */
+function RoleCard() {
+  const [matrix, setMatrix] = useState<RoleMatrix | null>(null)
+  useEffect(() => {
+    let alive = true
+    fetchRoleMatrix()
+      .then((result) => { if (alive) setMatrix(result) })
+      .catch(() => { if (alive) setMatrix(null) })
+    return () => { alive = false }
+  }, [])
+
+  if (!matrix) return null
+
+  return (
+    <section className="rounded-2xl border border-line bg-white p-4">
+      <div className="flex items-center gap-2">
+        <ShieldCheck className="size-4 text-brand-700" />
+        <p className="font-display text-[14px] font-semibold">Who can do what</p>
+        <span className="rounded-full bg-paper-3 px-2 py-0.5 text-[10px] font-bold text-ink-500">you are {matrix.mine.role}</span>
+      </div>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-left text-[10.5px]">
+          <thead>
+            <tr className="text-[9px] uppercase tracking-[0.1em] text-ink-400">
+              <th className="pb-1 pr-2 font-bold">Permission</th>
+              {matrix.roles.map((entry) => (
+                <th key={entry.role} className="pb-1 pr-2 font-bold">{entry.role}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.permissions.map((permission) => (
+              <tr key={permission} className="border-t border-line/70">
+                <td className="py-1 pr-2 font-medium text-ink-700">{permission}</td>
+                {matrix.roles.map((entry) => (
+                  <td key={entry.role} className="py-1 pr-2">
+                    {entry.permissions.includes(permission) ? (
+                      <span className="font-bold text-success-strong">yes</span>
+                    ) : (
+                      <span className="text-ink-400">—</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   )
 }
