@@ -24,7 +24,10 @@
 
 **Headline:** this is a **strong, playable single-player prototype of a business simulator** with a genuinely modelled monthly economy — but it is **not** the product described in the scope. The PDF specifies an AI-enabled, server-authoritative, institution-facing platform (LLM stakeholders, RBAC, lecturer portal, multiplayer, reproducible scenarios, statements, exports). What exists is a polished client-side web game with an under-used backend and no AI, no instructor surface, no multiplayer and no test coverage.
 
-**Rough coverage of the scope document: ~30% implemented, ~25% partial, ~45% absent** — weighted by MVP acceptance criteria (§16.2), where it is **3 pass / 6 partial / 4 fail** (see §4).
+**Coverage of the scope document: ~80% implemented, ~14% partial, ~6% absent** — weighted across simulation,
+assessment tooling, integration, interface, verification and hardening; the MVP acceptance criteria (§16.2) now
+stand at **12 pass / 1 partial / 0 fail** (see §4). The remainder is concentrated in the places §6 names: a
+server-owned simulation, granular roles/RBAC, a real database, and the unbuilt §6.11 governance surface.
 
 ---
 
@@ -129,23 +132,23 @@
 
 | # | Criterion | Verdict | Note |
 |---|---|---|---|
-| 1 | Learner creates profile and configures a business | ✅ Pass | Onboarding + company creation |
-| 2 | Set marketing budget and launch campaigns | ⚠️ Partial | Client exposes a budget slider only; a server campaign endpoint exists (`POST /marketing/campaigns`) but has no demand model and is never called by the UI |
-| 3 | Leads convert into customers/orders under defined rules | ⚠️ Partial | Pipeline deals + demand model; no lead funnel |
-| 4 | Orders consume inventory or capacity | ⚠️ Partial | Inventory affects supply factor; capacity is a soft overload penalty |
-| 5 | Hire staff and process salaries | ✅ Pass | Hire/fire + monthly payroll cost |
-| 6 | Invoices and payment schedules affect cash at the right time | ❌ Fail | No invoices, no schedules |
-| 7 | Pay suppliers and recurring expenses | ⚠️ Partial | Costs are automatic; no payment actions |
-| 8 | View cash forecasts and financial statements | ⚠️ Partial | Runway/burn metrics only; no statements |
-| 9 | Decisions produce consistent, explainable consequences | ⚠️ Partial | Good month-report drivers, but random and client-side |
-| 10 | Complete a scored scenario and receive a performance report | ✅ Pass | Score + grade + debrief (but free-form run, not a configured scenario) |
-| 11 | Instructor can review decisions and replay the scenario | ❌ Fail | No instructor surface, no replay |
-| 12 | Scenario resets to a reproducible starting state | ❌ Fail | Reset exists; reproducibility does not |
-| 13 | Unauthorised users cannot alter balances or scores | ❌ Fail | State lives in `localStorage`; any user can edit balances/score directly |
+| 1 | Learner creates profile and configures a business | ✅ Pass | Onboarding, unique business name, `POST /api/companies` |
+| 2 | Set marketing budget and launch campaigns | ✅ Pass | Marketing centre: six channels, mix allocation, attribution and CAC/LTV (§9.9) |
+| 3 | Leads convert into customers/orders under defined rules | ✅ Pass | Sales funnel: leads, qualification, quotes, retainers (§9.14) |
+| 4 | Orders consume inventory or capacity | ✅ Pass | Purchase orders, lead times, capacity, returns (§9.15) |
+| 5 | Hire staff and process salaries | ✅ Pass | Hire/fire + monthly payroll |
+| 6 | Invoices and payment schedules affect cash at the right time | ✅ Pass | Accrual invoices with due dates and settlement (§9.6/§9.8) |
+| 7 | Pay suppliers and recurring expenses | ✅ Pass | Supplier bills, payment runs, overdue fees (§9.12) |
+| 8 | View cash forecasts and financial statements | ✅ Pass | Finance centre: P&L, balance sheet, cash flow, what-if (§9.8) |
+| 9 | Decisions produce consistent, explainable consequences | ✅ Pass | Deterministic engine, decision journal, server replay (§9.5, §9.7) |
+| 10 | Complete a scored scenario and receive a performance report | ✅ Pass | Eight versioned scenario packs with objectives, debrief and scorecard PDF (§9.17) |
+| 11 | Instructor can review decisions and replay the scenario | ✅ Pass | Instructor portal: roster, replay, rubric, comparison, LTI passback (§9.3, §9.5, §9.19, §9.20) |
+| 12 | Scenario resets to a reproducible starting state | ✅ Pass | Pack seeds + instructor reset (§9.3, §9.17) |
+| 13 | Unauthorised users cannot alter balances or scores | ⚠️ Partial | Authoritative fields (score, cash, month, customers, valuation) are server-owned, bounds-checked, audited and replay-verified; the *local* copy is still editable, so a tampered run is flagged and rejected rather than prevented |
 
-**Result: 3 pass · 6 partial · 4 fail.** *(Superseded: 5 pass · 7 partial · 1 fail after §9,
-then 7 pass · 6 partial · 0 fail after §9.6. Rows 6 and 8 now pass after §9.6/§9.8 —
-invoices and schedules move cash at the right time, and the three statements exist.)*
+**Result: 12 pass · 1 partial · 0 fail.** *(History: 3/6/4 at the first audit, 7/6/0 after §9.6, 12/1/0 now.)*
+Row 13 stays partial on purpose: detection is not prevention. Moving the simulation itself server-side, or
+signing the local save, is the remaining work — it is the honest boundary of the current design.
 
 ---
 
@@ -155,9 +158,9 @@ invoices and schedules move cash at the right time, and the three statements exi
 |---|---|---|
 | 1 | Vision & positioning | 🟡 Directionally aligned; "AI-powered" claim not true of the product |
 | 2 | Objectives & principles | 🟡 Interconnected consequences ✅, rules-based ✅, business-type adaptive 🟡, global/configurable ❌ |
-| 3 | Roles & permissions | 🔴 Missing (single player role; admin key only) |
-| 4 | Player journey & game modes | 🟡 Journey ≈ steps 4–11 playable; **no guided/career/challenge/cohort/team/sandbox/executive mode switch**; steps 1–3 (discovery, validation) only as text in onboarding |
-| 5 | World & industry templates | 🟡 2.5D city with 8 landmarks; 4 of 8 industries; no template framework |
+| 3 | Roles & permissions | 🟡 Learner / instructor / admin roles exist with route guards and an instructor code (§9.3); no granular per-permission model |
+| 4 | Player journey & game modes | 🟡 Journey ≈ steps 4–11 playable; **scenario packs give configured runs** (guided/hardcore/standard, fixed seeds) and cohorts share one, but there is no explicit mode switch for career/challenge/team/sandbox/executive; steps 1–3 only as text in onboarding |
+| 5 | World & industry templates | 🟡 2.5D city with 8 landmarks; **8 of 8 industries** with their own suppliers, competitors and credit terms (§9.17); no template framework |
 | 6.1 | Strategy & planning | 🟡 Strategy pick at start; no mission/vision/OKRs/quarterly review/SWOT/risk register |
 | 6.2 | Operations | 🟡 Inventory/stockouts/suppliers only |
 | 6.3 | Marketing | 🔴 Budget slider only |
