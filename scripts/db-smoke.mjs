@@ -82,13 +82,28 @@ if (isSupabase) {
   }
 }
 
+/** node_modules missing is a first-run failure; say so instead of throwing a resolver stack. */
+async function loadPg() {
+  try {
+    return await import('pg')
+  } catch (cause) {
+    if (/Cannot find package 'pg'|ERR_MODULE_NOT_FOUND/.test(String(cause?.message ?? cause))) {
+      console.error('\nThe Postgres driver is not installed — node_modules is missing or incomplete.\n')
+      console.error('  npm install\n')
+      console.error('Then re-run: npm run db:smoke\n')
+      process.exit(1)
+    }
+    throw cause
+  }
+}
+
 const timed = async (run) => {
   const started = Date.now()
   const value = await run()
   return { value, ms: Date.now() - started }
 }
 
-const { default: pg } = await import('pg')
+const { default: pg } = await loadPg()
 // Keep in sync with pgConnectionString()/sslFor() in backend/db/postgres.ts:
 // Supabase copies `?sslmode=require`; pg honours it as verify-full but warns
 // loudly, so normalise it before connecting.

@@ -433,7 +433,10 @@ export function sslFor(url: string): { rejectUnauthorized: boolean } | undefined
 
 /** `pg` Pool is only imported when a Postgres URL is actually configured. */
 export async function createPgStore(connectionString: string): Promise<DatabaseStore> {
-  const { Pool } = await import('pg')
+  const { Pool } = await import('pg').catch((cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    throw new Error(/Cannot find package 'pg'/.test(message) ? 'the `pg` driver is not installed — run `npm install`' : message)
+  })
   const pool = new Pool({
     connectionString: pgConnectionString(connectionString),
     // Supabase (and Neon) present a publicly-trusted certificate, so this is the

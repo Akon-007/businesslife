@@ -7,10 +7,13 @@ your numbers through a provider-agnostic AI gateway.
 ## Run it
 
 ```bash
-npm install
+npm install           # required first: `pg`, `esbuild`, `tsx` and friends
 npm run dev:backend   # API on 127.0.0.1:8787 (override with PORT / HOST)
 npm run dev           # game on http://localhost:5173 (override with DEV_PORT / API_PROXY_TARGET)
 ```
+
+Both read `.env`, and `PORT` decides where `/api` is proxied, so the two commands
+stay in step. Set `API_PROXY_TARGET` only to point the UI at a different host.
 
 Player: **/play** · Instructor portal: **/lecturer**
 

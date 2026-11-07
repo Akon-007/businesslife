@@ -37,6 +37,24 @@ if (!url) {
 }
 if (usingDirect) console.log('\nusing DIRECT_URL for the migration (session pooler / direct connection)')
 
+/**
+ * node_modules missing or half-installed is the most common first-run failure,
+ * and the raw ERR_MODULE_NOT_FOUND stack says nothing useful.
+ */
+async function loadPg() {
+  try {
+    return await import('pg')
+  } catch (cause) {
+    if (/Cannot find package 'pg'|ERR_MODULE_NOT_FOUND/.test(String(cause?.message ?? cause))) {
+      console.error('\nThe Postgres driver is not installed — node_modules is missing or incomplete.\n')
+      console.error('  npm install\n')
+      console.error('Then re-run: npm run db:migrate\n')
+      process.exit(1)
+    }
+    throw cause
+  }
+}
+
 const schema = readFileSync(fileURLToPath(new URL('../backend/db/schema.sql', import.meta.url)), 'utf8')
 
 // Keep in sync with pgConnectionString()/sslFor() in backend/db/postgres.ts:
@@ -72,7 +90,7 @@ if (isTransactionPooler) {
   console.warn('\nNote: port 6543 is the transaction pooler. A multi-statement migration is safer on the session pooler (5432) or the direct connection.\n')
 }
 
-const { default: pg } = await import('pg')
+const { default: pg } = await loadPg()
 const client = new pg.Client({ connectionString: normalise(url), ssl })
 let connected = false
 try {

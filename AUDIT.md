@@ -939,3 +939,24 @@ the gate passes end to end. **Not verified:** a live Supabase endpoint — this
 sandbox cannot reach `*.supabase.co`, so TLS with their certificate, Supavisor
 behaviour, cold starts and PITR are untested until `db:smoke` is run on the real
 project. That gap is stated in `docs/database.md` rather than papered over.
+
+### 9.24 The first run on someone else's machine — **fixed**
+
+Connecting a real project for the first time produced three failures that had
+nothing to do with Supabase:
+
+- **`npm install` had never been run** (or was partial), and every entry point died
+  with a raw `ERR_MODULE_NOT_FOUND` resolver stack — `pg` from the db scripts,
+  `esbuild` from `npm run dev:backend`. All three now say "node_modules is missing
+  or incomplete — npm install" and exit 1. A dependency that *is* installed still
+  raises its real error.
+- **`PORT=8788` in `.env` silently broke the UI.** The API read `.env`; Vite did
+  not, and proxied `/api` to its hardcoded 8787 default. Every call failed for a
+  reason unrelated to the app. `vite.config.ts` now loads the same `.env`, so
+  `PORT` is the single source of truth for both the listener and the proxy
+  (`API_PROXY_TARGET` and `DEV_PORT` still override). Verified both ways: no
+  `.env` → API 8787, app 5173, proxy 8787; `.env` with `PORT=8788` → API 8788,
+  proxy 8788, with 8787 confirmed empty so the check cannot pass by accident.
+- **The template told people to keep `PORT=8788`** while the README documented
+  8787. Both now describe the same rule, and the `--check` path from 9.23 got used
+  for real: the string it approved was the one that then migrated.
