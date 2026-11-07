@@ -14,7 +14,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PostgresStore, encode } from '../backend/db/postgres.js'
+import { PostgresStore, encode, pgConnectionString, sslFor } from '../backend/db/postgres.js'
 import { createJsonStore } from '../backend/db/json.js'
 import { emptyDatabase, hydrateDatabase } from '../backend/db/shape.js'
 import type { Database } from '../backend/types.js'
@@ -365,6 +365,16 @@ async function main() {
     void name
   }
   check('concurrent saves never overlap their transactions', brackets.length === 0, order.join(' '))
+
+  // Connection-string handling: Supabase copies `?sslmode=require`, which pg
+  // honours as verify-full but warns about on every connection.
+  const sample = 'postgresql://postgres.abcdefgh:pw@aws-0-eu-west-1.pooler.supabase.com:6543/postgres'
+  check('sslmode=require is rewritten to verify-full', pgConnectionString(`${sample}?sslmode=require`).includes('sslmode=verify-full'))
+  check('the rewrite keeps host, port and database intact', new URL(pgConnectionString(`${sample}?sslmode=require`)).host === new URL(sample).host)
+  check('sslmode=disable is left alone (it means plaintext)', pgConnectionString(`${sample}?sslmode=disable`).endsWith('sslmode=disable'))
+  check('TLS stays strict for a normal URL', sslFor(sample)?.rejectUnauthorized === true && sslFor(`${sample}?sslmode=require`)?.rejectUnauthorized === true)
+  check('sslmode=disable turns TLS off rather than downgrading it', sslFor(`${sample}?sslmode=disable`) === undefined)
+  check('an unparseable URL is passed through untouched', pgConnectionString('not a url') === 'not a url')
 
   // Every table the driver writes must be declared in schema.sql.
   const written = Object.keys(encode(data).rows)

@@ -910,6 +910,16 @@ concurrent saves.
 | Keys | The API uses the Postgres connection string only — no anon key, no service-role key, no REST client |
 | Observability | `application_name=businesslife-api`, boot log names the live driver, connection logs show the client |
 
+**Connecting a project.** `SUPABASE_DB_URL` in a gitignored `.env` is picked up
+by the API and by both `db:*` scripts (`process.loadEnvFile`, no dependency);
+anything already in the environment still wins, so deploy settings are never
+shadowed. Two rough edges are fixed: `pg` printed a security warning on every
+connection because Supabase copies `?sslmode=require` (the driver now rewrites it
+to `verify-full`, which is what it actually enforces — asserted in `verify:db`),
+and `db:migrate` used to die with a raw stack trace when the connection failed
+(now a one-line cause plus the four realistic ones: wrong password, IPv6-only
+direct host, paused project, wrong region).
+
 **Tooling.** `npm run db:smoke` now detects the provider and pooler mode from the
 URL, warns when `sslmode` is omitted or when a migration is pointed at the
 transaction pooler, checks TLS, the 12 tables, the schema version and anon

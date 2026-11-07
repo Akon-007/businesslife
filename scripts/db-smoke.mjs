@@ -12,6 +12,15 @@
  * write/read/delete, printing timings. It creates and removes one `app_meta` row,
  * so it is safe against live data.
  */
+import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
+
+// A local `.env` is convenient on a laptop; real environment variables still win.
+const envFile = fileURLToPath(new URL('../.env', import.meta.url))
+if (existsSync(envFile)) {
+  try { process.loadEnvFile(envFile) } catch (cause) { console.warn(`ignoring .env: ${cause.message}`) }
+}
+
 const url = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
 let failures = 0
 const warn = (label) => console.log(`  ! ${label}`)
@@ -68,8 +77,34 @@ const timed = async (run) => {
 }
 
 const { default: pg } = await import('pg')
-const ssl = /sslmode=disable/.test(url) ? undefined : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
-const client = new pg.Client({ connectionString: url, ssl, connectionTimeoutMillis: 20_000, application_name: 'businesslife-smoke' })
+// Keep in sync with pgConnectionString()/sslFor() in backend/db/postgres.ts:
+// Supabase copies `?sslmode=require`; pg honours it as verify-full but warns
+// loudly, so normalise it before connecting.
+function normalise(raw) {
+  try {
+    const parsed = new URL(raw)
+    const mode = parsed.searchParams.get('sslmode')
+    if (mode && mode !== 'disable' && mode !== 'verify-full') {
+      parsed.searchParams.set('sslmode', 'verify-full')
+      parsed.searchParams.delete('uselibpqcompat')
+      return parsed.toString()
+    }
+  } catch { /* leave it to pg to complain */ }
+  return raw
+}
+const ssl = /(^|[?&])sslmode=disable(&|$)/.test(url) ? undefined : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+
+const HINTS = `Common causes, in order of likelihood:
+  · wrong password            — reset it in Project Settings -> Database, and URL-encode special characters (@ -> %40, # -> %23, : -> %3A)
+  · direct host db.<ref>.supabase.co is IPv6-only on new projects — use the pooler host (aws-0-<region>.pooler.supabase.com) and user postgres.<ref>
+  · project paused            — free projects pause when idle; open the dashboard and restore it
+  · wrong region in the host  — copy the URI from Project Settings -> Database -> Connection string instead of editing ours`
+
+function describe(error) {
+  const code = error && error.code ? ` (${error.code})` : ''
+  return `${error instanceof Error ? error.message : String(error)}${code}`
+}
+const client = new pg.Client({ connectionString: normalise(url), ssl, connectionTimeoutMillis: 20_000, application_name: 'businesslife-smoke' })
 
 try {
   const connect = await timed(() => client.connect())
@@ -133,7 +168,7 @@ try {
   console.log(`      backend pid during the transaction: ${inTx.rows[0]?.pid}`)
 } catch (error) {
   failures += 1
-  console.error(`\n  ✗ ${error instanceof Error ? error.message : error}`)
+  console.error(`\n  ✗ ${describe(error)}`)
   const text = String(error)
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN/i.test(text)) {
     console.error('    Host unreachable from here — check the hostname, the port, and whether this network is IPv4-only.')
@@ -150,6 +185,7 @@ try {
   if (/prepared statement|bind message/i.test(text)) {
     console.error('    Named prepared statements do not survive transaction-mode pooling; the app does not use them.')
   }
+  console.error(`\n  ${HINTS.replace(/\n/g, '\n  ')}`)
 } finally {
   await client.end().catch(() => {})
 }

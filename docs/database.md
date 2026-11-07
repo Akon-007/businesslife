@@ -23,33 +23,49 @@ storage: postgres (DATABASE_URL)
 2. **Project → Settings → Database → Connection string → URI.** Pick the pooler:
    - **Transaction pooler, port 6543** — best for a serverless/edge deploy or many
      short-lived processes.
-   - **Session pooler, port 5432** — best for a long-running Node server.
+   - **Session pooler, port 5432** — best for a long-running Node server, and the
+     right choice for `db:migrate` (the schema is one multi-statement transaction).
    - The **direct** connection (port 5432 on `db.<ref>.supabase.co`) is IPv6-only
      on new projects; use it only if your network supports IPv6.
-3. URL-encode the password (a `@` or `#` in it will otherwise break the URL), and
-   keep `?sslmode=require`:
+3. URL-encode the password — a `@`, `#`, `:` or `/` in it otherwise breaks the
+   URL (`@` → `%40`). Keep `?sslmode=require`; the driver rewrites it to
+   `verify-full` (what it actually does) so `pg` stops printing its security
+   warning on every connection.
+
+4. Put it in `.env` at the repo root — the API and both `db:*` scripts load that
+   file, and real environment variables still win over it:
 
    ```bash
-   export SUPABASE_DB_URL='postgresql://postgres.abcdefgh:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require'
+   # .env — gitignored
+   SUPABASE_DB_URL=postgresql://postgres.abcdefgh:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require
    ```
 
-4. Create the tables (idempotent, safe on every deploy):
+   Prefer exporting it by hand? `export SUPABASE_DB_URL=…` works identically.
+   Never commit it: `.env` is in `.gitignore`.
+
+5. Create the tables (idempotent, safe on every deploy):
 
    ```bash
    npm run db:migrate
    ```
 
-5. Prove it, from a machine that can reach Supabase:
+6. Prove it, from a machine that can reach Supabase:
 
    ```bash
    npm run db:smoke
    ```
 
-   It reports the pooler mode it detected, checks TLS, the 12 tables, the schema
+   It prints the host, user, database and pooler mode it detected, warns about a
+   missing `sslmode` or a migration aimed at port 6543, checks TLS, the 12 tables,
+   the schema version, **whether the `anon` role can read anything**, and does a
+   write/read/delete with timings. If the tables do not exist yet it says so and
+   tells you to run `db:migrate`., checks TLS, the 12 tables, the schema
    version, **whether the `anon` role can read anything**, and does a
    write/read/delete with timings.
 
-6. Start the API. The boot log must say `storage: postgres (DATABASE_URL)`.
+7. Start the API. The boot log must say `storage: postgres (DATABASE_URL)`.
+   Then `npm run dev` for the UI: nothing in the frontend talks to Supabase —
+   the browser only ever calls `/api` on the API, so no key reaches the bundle.
 
 You do **not** need the anon key or the service-role key: the API talks to
 Postgres directly with the project's database user. The REST/JS clients are not

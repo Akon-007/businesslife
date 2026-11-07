@@ -51,8 +51,11 @@ const INSERT_ORDER: Table[] = [
 
 const singleton = 'default'
 
-/** A single save must never hang a pooled connection indefinitely. */
-const STATEMENT_TIMEOUT_MS = Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 20_000)
+/**
+ * A single save must never hang a pooled connection indefinitely. Read per call,
+ * not at import time, so a `.env` loaded later still applies.
+ */
+const statementTimeoutMs = () => Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 20_000)
 
 /**
  * Flatten the in-memory database into rows. `classRecords` and `classStudents`
@@ -262,7 +265,7 @@ export class PostgresStore implements DatabaseStore {
       await runner.query('begin')
       // `set local` is transaction-scoped, so it is safe on Supavisor's
       // transaction mode (port 6543) where session state does not survive.
-      await runner.query(`set local statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`)
+      await runner.query(`set local statement_timeout = '${statementTimeoutMs()}ms'`)
       for (const table of INSERT_ORDER) {
         if (table === 'class_students' || table === 'classroom_records') continue
         for (const row of encoded.rows[table] ?? []) {
@@ -396,17 +399,47 @@ export class PostgresStore implements DatabaseStore {
   }
 }
 
+/**
+ * Supabase's dashboard copies `?sslmode=require`. `pg` upgrades that to
+ * verify-full but prints a security warning on every connection, which looks
+ * like a problem in our logs. Rewrite it to what actually happens.
+ *
+ * `sslmode=disable` is left alone: it means plaintext, deliberately.
+ *
+ * Keep in sync with the copy in scripts/db-{migrate,smoke}.mjs — those run
+ * without a build step and cannot import this module.
+ */
+export function pgConnectionString(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const mode = parsed.searchParams.get('sslmode')
+    if (mode && mode !== 'disable' && mode !== 'verify-full') {
+      parsed.searchParams.set('sslmode', 'verify-full')
+      parsed.searchParams.delete('uselibpqcompat')
+      return parsed.toString()
+    }
+  } catch {
+    // Not a URL we can parse — let `pg` report the real problem.
+  }
+  return url
+}
+
+/** `sslmode=disable` means plaintext; anything else verifies the chain. */
+export function sslFor(url: string): { rejectUnauthorized: boolean } | undefined {
+  return /(^|[?&])sslmode=disable(&|$)/.test(url)
+    ? undefined
+    : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+}
+
 /** `pg` Pool is only imported when a Postgres URL is actually configured. */
 export async function createPgStore(connectionString: string): Promise<DatabaseStore> {
   const { Pool } = await import('pg')
   const pool = new Pool({
-    connectionString,
+    connectionString: pgConnectionString(connectionString),
     // Supabase (and Neon) present a publicly-trusted certificate, so this is the
     // strict default. `DB_SSL_INSECURE=true` exists for a self-signed proxy and
     // says so in the boot log rather than silently downgrading in code.
-    ssl: /sslmode=disable/.test(connectionString)
-      ? undefined
-      : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' },
+    ssl: sslFor(connectionString),
     max: Number(process.env.PGPOOL_MAX ?? 8),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,

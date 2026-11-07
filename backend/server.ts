@@ -1,3 +1,4 @@
+import { loadEnv } from './env.js'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
 import { devLoginEnabled, hashPassword, instructorCode, issueSession, playerForToken, revokeSession, throttleCheck, throttleFail, throttleReset, verifyPassword } from './auth.js'
@@ -19,6 +20,8 @@ import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from
 import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
 import type { Company, Database, Player } from './types.js'
+
+loadEnv()
 
 const port = Number(process.env.PORT ?? 8787)
 const host = process.env.HOST ?? '127.0.0.1'
@@ -809,7 +812,7 @@ try {
 } catch (caught) {
   const message = caught instanceof Error ? caught.message : String(caught)
   console.error(`\nStorage is not reachable (${storeDriver()}): ${message}`)
-  console.error('Check DATABASE_URL — Neon needs ?sslmode=require — or unset it to run on the JSON file store.\n')
+  console.error('Check SUPABASE_DB_URL (or DATABASE_URL) — the pooler host with ?sslmode=require — or unset it to run on the JSON file store.\n')
   process.exit(1)
 }
 console.log(`storage: ${storeDriver() === 'postgres' ? 'postgres (DATABASE_URL)' : 'json file (backend/data/businesslife.json)'}`)

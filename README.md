@@ -85,6 +85,12 @@ with `jsonb`, queried fields as indexed columns, row-level security enabled and
 writes. Without it, the JSON file store is used. See `docs/database.md`; the boot
 log states which driver is live.
 
+The API and the `db:*` scripts read `.env` at the repo root if one exists, so a
+connection string can live there instead of in your shell profile. Real
+environment variables take precedence, and `.env` is gitignored — only
+`.env.example` is committed. Point it at a Supabase project, run
+`npm run db:migrate` once, then `npm run db:smoke` to prove the endpoint.
+
 ### Server authority
 
 The simulation still runs in the browser, but the server owns the fields that matter for
