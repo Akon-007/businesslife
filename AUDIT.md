@@ -699,23 +699,37 @@ run), the verdict recomputing every objective from state, and a JSON save round-
 its verdict. `verify:statements` now sweeps all eight industries (68 checks). The gate is **15 suites, 0
 failures**; wiring is 23/23 client calls resolved.
 
-### 9.18 Real-browser end-to-end and axe accessibility — **scaffolded, not yet executed**
+### 9.18 Real-browser journeys and axe accessibility — **implemented and green in CI**
 
 `verify:render` server-renders components from a real game state, and `verify:contrast` checks the token pairs
-the UI uses — but neither touches a browser, so focus order, accessible names produced by the DOM, and the
-actual click path were untested. This adds that layer:
+the UI uses — but neither touches a browser, so focus order, accessible names produced by the DOM and the
+actual click path were untested. That gap is now closed:
 
 | File | What it does |
 |---|---|
-| `playwright.config.ts` | Chromium, one worker, starts the API and the Vite dev server itself (reusing running ones), traces and screenshots on failure |
+| `playwright.config.ts` | Chromium, one worker, reduced motion, starts the API and the Vite dev server itself (reusing running ones), traces and screenshots on failure |
 | `e2e/onboarding.spec.ts` | The Instructor link goes straight to `/lecturer`; a profile leads to the scenario picker; picking a pack shows its brief, window and objectives *and* collapses the industry grid to that pack's industry; clearing the chip restores free play |
-| `e2e/a11y.spec.ts` | axe-core (WCAG 2.0/2.1 A + AA) over the landing page, both onboarding steps and the instructor sign-in; `serious`/`critical` violations fail, `moderate` findings are printed for triage |
-| `scripts/verify-e2e.mjs` | `npm run verify:e2e` — runs the suite, or **skips with an explicit message** when no browser binary exists. It never reports a pass it did not earn |
-| `.github/workflows/verify.yml` | A second `e2e` job installs Chromium and runs `npx playwright test`, uploading the report on failure. Kept out of the `verify` job so the fast gate stays network-light |
+| `e2e/a11y.spec.ts` | axe-core (WCAG 2.0/2.1 A + AA) over the landing page, both onboarding steps and the instructor sign-in; `serious`/`critical` violations fail with their targets in the message, `moderate` findings are printed |
+| `scripts/verify-e2e.mjs` | `npm run verify:e2e` — runs the suite, or skips with an explicit message when no browser is installed. It never reports a pass it did not earn |
+| `scripts/e2e-summary.mjs` | Turns the Playwright JSON report into `::error` annotations, so a failing run explains itself in `gh run view` even when the artifact cannot be downloaded |
+| `.github/workflows/verify.yml` | A separate `e2e` job installs Chromium and runs the suite, so the fast `verify` job stays network-light |
 
-**Honest limitation.** The suite has never been executed: this development sandbox cannot reach Playwright's
-CDN (`npx playwright install chromium` fails with a download error), so no browser is available. What is proven
-here is that the specs compile and are discovered (7 tests in 2 files via `npx playwright test --list`), that the
-project is in the gate as a script, and that the skip path is truthful. The first real execution will be the CI
-`e2e` job on the next push. Until that run is green, this is scaffolding — **not** a verified accessibility
-result, and the audit should not be read as one.
+**Status.** This sandbox cannot reach Playwright's CDN, so the suite was written and iterated through CI rather
+than locally. It found real defects on the way, and each was fixed rather than suppressed:
+
+1. **Success buttons failed contrast** — white on `#17C995` measured 2.13:1. The `lime` button variant now uses
+   ink text (8.7:1), keeping white only on the darker hover fill.
+2. **Instructor sign-in labels** — `white/45` on the lifted dark card measured 4.25:1; now `ink-300` (7.49:1).
+3. **Onboarding step labels** — `ink-300` on light paper measured 2.19:1; future steps use `ink-400`.
+4. **Landing avatar initials** — white on mid-tone fills (3.39–4.41:1); the palette is dark enough now.
+5. **Landing live feed** — rows faded with `opacity-45`, dragging `ink-400` text to 2.7:1; rows are no longer
+   faded. The tag also failed while an entrance animation was mid-fade, so axe now runs under reduced motion
+   after a settle delay.
+6. **City landmark buttons** — `aria-label` omitted the visible short name (`label-content-name-mismatch`), and
+   the icon-only arrow to `/play` had no accessible name (`link-name`). Both fixed.
+7. **Muted text across the app** — every `text-white/30–45` became `text-white/60`; below 50% white on `ink-950`
+   the ratio falls under AA. `verify:contrast` now scans `src/` for that pattern (26 token pairs + a source scan)
+   so the arithmetic gate catches it too, not just axe.
+
+**Verified.** The `e2e` job is green on PR #5: 7 tests, 4 axe scans, no serious or critical violations on any
+page audited.

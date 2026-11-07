@@ -35,7 +35,7 @@ npm run verify:centres # payment runs, marketing mix, attribution and unit econo
 npm run verify:replay   # the API re-executes the seed + decision journal and agrees
 npm run verify:legit    # six months of honest play is never flagged as tampering
 npm run verify:scenarios # scenario packs start, replay deterministically and score themselves
-npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`)
+npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`; CI runs it)
 npm run build           # production build
 npm run lint            # oxlint
 ```
