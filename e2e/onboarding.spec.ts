@@ -31,7 +31,7 @@ test.describe('onboarding', () => {
     await expect(page.getByText(/play a scenario, or play free/i)).toBeVisible()
     // Free play is the default and the industry grid is the full set.
     await expect(page.getByRole('button', { name: /free play/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /retail & e-commerce/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /fashion & retail/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /manufacturing/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /education & training/i })).toBeVisible()
   })
@@ -54,7 +54,7 @@ test.describe('onboarding', () => {
     await expect(page.getByText(/industry \(set by the scenario\)/i)).toBeVisible()
 
     // Only the pack's industry remains selectable.
-    await expect(page.getByRole('button', { name: /retail & e-commerce/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /fashion & retail/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /manufacturing/i })).toHaveCount(0)
 
     // And the chip can be cleared to go back to free play.

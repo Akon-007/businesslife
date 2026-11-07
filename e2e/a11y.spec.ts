@@ -15,8 +15,17 @@ async function audit(page: Page, label: string) {
     .analyze()
 
   const blocking = results.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
+  // Targets and the contrast numbers have to be in the message: the CI
+  // annotation is the only thing visible when an artifact cannot be fetched.
   const summary = blocking
-    .map((violation) => `${violation.id} (${violation.impact}) x${violation.nodes.length}: ${violation.help}`)
+    .flatMap((violation) =>
+      violation.nodes.slice(0, 4).map((node) => {
+        const where = node.target.join(' ')
+        const why = (node.failureSummary ?? '').replace(/\s+/g, ' ').slice(0, 220)
+        return `${violation.id} (${violation.impact}) [${where}] ${why}`
+      }),
+    )
+    .slice(0, 10)
     .join('\n')
 
   const advisory = results.violations
