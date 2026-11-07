@@ -1,6 +1,10 @@
 # Reference clone (third-party, nested git repo)
 _reference/
 
+# An exported certificate chain for this machine's proxy; not shared.
+db-ca.pem
+*.local.pem
+
 # Local secrets (connection strings, API keys). `.env.example` is committed.
 .env
 .env.*

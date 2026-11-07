@@ -6,8 +6,20 @@
  *
  *   node scripts/build-engine.mjs
  */
-import { build } from 'esbuild'
 import { mkdir } from 'node:fs/promises'
+
+// `npm run dev:backend` starts here, so a missing node_modules must say so.
+let build
+try {
+  ;({ build } = await import('esbuild'))
+} catch (cause) {
+  if (/Cannot find package 'esbuild'|ERR_MODULE_NOT_FOUND/.test(String(cause?.message ?? cause))) {
+    console.error('\nThe bundler is not installed — node_modules is missing or incomplete.\n')
+    console.error('  npm install\n')
+    process.exit(1)
+  }
+  throw cause
+}
 
 const outfile = 'backend-dist/engine.mjs'
 

@@ -84,6 +84,50 @@ You do **not** need the anon key or the service-role key: the API talks to
 Postgres directly with the project's database user. The REST/JS clients are not
 used.
 
+## TLS interception: `SELF_SIGNED_CERT_IN_CHAIN`
+
+Node ships its own root bundle and does **not** read the Windows certificate
+store or the macOS Keychain. On a machine behind a TLS-inspecting proxy, VPN or
+antivirus, the connection is re-signed with a locally-trusted root, so every
+Supabase connection fails while the browser is perfectly happy.
+
+Diagnose without a password:
+
+```bash
+npm run db:smoke -- --tls     # uses SUPABASE_DB_URL, or pass a URL after --tls
+```
+
+It speaks the Postgres handshake properly — SSLRequest first, `S`/`N`/`E`, then
+TLS — because Postgres does not offer TLS on connect and a plain TLS handshake
+against 5432 fails with `ERR_SSL_WRONG_VERSION_NUMBER` on a healthy server. It
+prints the subject, the **issuer** and the expiry, then says whether Node's own
+trust store accepts the chain. If the issuer is your employer, a VPN vendor or
+an antivirus product, interception is confirmed.
+
+If hunting for that root is the annoying part, export it instead:
+
+```bash
+npm run db:trust          # writes ./db-ca.pem (gitignored) and proves it works
+```
+
+It reads the chain the server actually presents, writes it as PEM, then reconnects
+with that file pinned and reports whether verification now passes — so the file is
+tested before you rely on it. On a managed laptop, confirm with IT that the root is
+one you are meant to trust; the command adds nothing automatically.
+
+Fixes, in order of preference — all keep verification on:
+
+```bash
+NODE_OPTIONS=--use-system-ca               # Node 22.9+: trust the OS store
+NODE_EXTRA_CA_CERTS=C:\certs\corp-root.pem  # or export it on macOS/Linux
+DB_SSL_CA=C:\certs\corp-root.pem            # same root, scoped to this app
+```
+
+`DB_SSL_CA` is read by the API and both `db:*` scripts, and the pinned root is
+asserted in `verify:db`. `DB_SSL_INSECURE=true` exists as a last resort: the
+traffic stays encrypted but the server is not authenticated, and the driver prints
+a warning saying exactly that rather than downgrading silently.
+
 ## Exposure: why the schema touches RLS
 
 Supabase serves the `public` schema over PostgREST to the `anon` and

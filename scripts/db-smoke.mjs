@@ -13,7 +13,8 @@
  * so it is safe against live data.
  */
 import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { probeTls } from './tls-probe.mjs'
 
 // A local `.env` is convenient on a laptop; real environment variables still win.
 const envFile = fileURLToPath(new URL('../.env', import.meta.url))
@@ -21,12 +22,20 @@ if (existsSync(envFile)) {
   try { process.loadEnvFile(envFile) } catch (cause) { console.warn(`ignoring .env: ${cause.message}`) }
 }
 
+// Postgres negotiates TLS after this 8-byte SSLRequest, not on connect.
+
 const url = (process.env.DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? process.env.NEON_DATABASE_URL ?? '').trim()
 
 const checkFlag = process.argv.indexOf('--check')
 if (checkFlag !== -1) {
   const candidate = (process.argv[checkFlag + 1] ?? url ?? '').trim()
   process.exit(checkConnectionString(candidate) === 0 ? 0 : 1)
+}
+
+const tlsFlag = process.argv.indexOf('--tls')
+if (tlsFlag !== -1) {
+  const target = (process.argv[tlsFlag + 1] ?? url ?? '').trim()
+  process.exit(await inspectTls(target))
 }
 
 if (!url) {
@@ -82,13 +91,103 @@ if (isSupabase) {
   }
 }
 
+/** node_modules missing is a first-run failure; say so instead of throwing a resolver stack. */
+async function loadPg() {
+  try {
+    return await import('pg')
+  } catch (cause) {
+    if (/Cannot find package 'pg'|ERR_MODULE_NOT_FOUND/.test(String(cause?.message ?? cause))) {
+      console.error('\nThe Postgres driver is not installed — node_modules is missing or incomplete.\n')
+      console.error('  npm install\n')
+      console.error('Then re-run: npm run db:smoke\n')
+      process.exit(1)
+    }
+    throw cause
+  }
+}
+
+/**
+ * `--tls [url]` inspects the certificate chain only: no password, no schema.
+ *
+ * SELF_SIGNED_CERT_IN_CHAIN is almost never Supabase — it is a proxy, a VPN or
+ * antivirus re-signing the connection, or a root missing from Node's bundle
+ * (Node ignores the Windows store and Keychain unless told otherwise). This
+ * separates that from a network failure, which looks similar to a user.
+ */
+function inspectTls(raw) {
+  console.log('\nTLS chain check\n')
+  let target
+  try {
+    target = new URL(raw)
+  } catch {
+    console.log('  ✗ pass a URL: npm run db:smoke -- --tls postgresql://…@host:5432/postgres\n')
+    return 1
+  }
+  const host = target.hostname
+  const isPostgres = /^postgres(ql)?:/.test(target.protocol)
+  const port = Number(target.port || (isPostgres ? 5432 : 443))
+  console.log(`      host: ${host}:${port}`)
+  // Postgres does not speak TLS on connect: it takes an SSLRequest packet, answers
+  // S/N/E, and only then does TLS begin. A raw TLS handshake against 5432 gets
+  // ERR_SSL_WRONG_VERSION_NUMBER from a perfectly healthy server.
+  console.log(`      mode: ${isPostgres ? 'PostgreSQL: SSLRequest, then TLS' : 'direct TLS'}\n`)
+
+  return (async () => {
+    const lenient = await probeTls({ host, port, isPostgres, rejectUnauthorized: false })
+    if (!lenient.ok) {
+      console.log(`  ✗ ${lenient.code ?? 'ERROR'}: ${lenient.message}\n`)
+      if (lenient.code === 'SSL_NOT_SUPPORTED') {
+        console.log('    The server answered N to the SSLRequest — this endpoint does not offer TLS.')
+        console.log('    Supabase always requires TLS; check that the URL is the pooler host and port.\n')
+      } else if (lenient.code === 'PG_ERROR') {
+        console.log('    Postgres refused the connection before any TLS happened — usually a paused')
+        console.log('    project, a connection limit, or an IP restriction. Nothing to do with certificates.\n')
+      } else if (lenient.code === 'ERR_SSL_WRONG_VERSION_NUMBER') {
+        console.log('    Something that is not TLS answered on this port. Use the postgres:// URL of a')
+        console.log('    Postgres port — 5432/6543 on the pooler — rather than an HTTP endpoint.\n')
+      } else {
+        console.log('    The host could not be reached, so certificates are not the problem.')
+        console.log('    ENOTFOUND = wrong host, ECONNREFUSED = wrong port or a paused project, ETIMEDOUT = firewall.\n')
+      }
+      return 1
+    }
+
+    const { cert } = lenient
+    const issuer = [cert.issuer?.O, cert.issuer?.CN].filter(Boolean).join(' / ') || '(unknown)'
+    console.log('  ✓ connected and reached the server\'s certificate')
+    console.log(`      subject : ${cert.subject?.CN ?? '(none)'}`)
+    console.log(`      issuer  : ${issuer}`)
+    console.log(`      valid to: ${cert.valid_to ?? '(unknown)'}`)
+
+    const strict = await probeTls({ host, port, isPostgres, rejectUnauthorized: true })
+    if (strict.ok) {
+      console.log('\n  ✓ Node\'s trust store accepts this chain — this machine should connect fine.\n')
+      return 0
+    }
+
+    console.log(`\n  ✗ Node's trust store rejects this chain: ${strict.code ?? strict.message}`)
+    if (/self.signed|self signed|unable to verify|certificate/i.test(String(strict.code))) {
+      console.log('    Something between you and the server is re-signing the connection — a corporate')
+      console.log('    proxy, a VPN, or antivirus with HTTPS scanning enabled. Node does not read the')
+      console.log('    Windows certificate store or Keychain unless told to, so the local root is unknown.')
+      console.log(`    Certificate presented by the interceptor: issued by "${issuer}".`)
+    }
+    console.log('\n    Fixes, in order of preference:\n')
+    console.log('      $env:NODE_OPTIONS="--use-system-ca"                 # Node 22.9+, trusts the OS store')
+    console.log('      $env:NODE_EXTRA_CA_CERTS="C:\\certs\\corp-root.pem"  # or export it on macOS/Linux')
+    console.log('      DB_SSL_CA="C:\\certs\\corp-root.pem"                # same, scoped to this app')
+    console.log('      DB_SSL_INSECURE=true                                # last resort: encrypted, unauthenticated\n')
+    return 1
+  })()
+}
+
 const timed = async (run) => {
   const started = Date.now()
   const value = await run()
   return { value, ms: Date.now() - started }
 }
 
-const { default: pg } = await import('pg')
+const { default: pg } = await loadPg()
 // Keep in sync with pgConnectionString()/sslFor() in backend/db/postgres.ts:
 // Supabase copies `?sslmode=require`; pg honours it as verify-full but warns
 // loudly, so normalise it before connecting.
@@ -104,7 +203,29 @@ function normalise(raw) {
   } catch { /* leave it to pg to complain */ }
   return raw
 }
-const ssl = /(^|[?&])sslmode=disable(&|$)/.test(url) ? undefined : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+const ssl = sslOptions(url)
+
+/**
+ * `sslmode=disable` means plaintext; anything else verifies the chain.
+ *
+ * `DB_SSL_CA` pins an extra root — the fix for a TLS-inspecting proxy or
+ * antivirus, because Node reads neither the Windows store nor Keychain by
+ * default and fails with SELF_SIGNED_CERT_IN_CHAIN. Keep in sync with sslFor()
+ * in backend/db/postgres.ts.
+ */
+function sslOptions(raw) {
+  if (/(^|[?&])sslmode=disable(&|$)/.test(raw)) return undefined
+  const insecure = process.env.DB_SSL_INSECURE === 'true'
+  if (insecure) console.warn('[db] TLS verification is off (DB_SSL_INSECURE=true) — encrypted, but the server is not authenticated.')
+  const caPath = (process.env.DB_SSL_CA ?? '').trim()
+  if (!caPath) return { rejectUnauthorized: !insecure }
+  try {
+    return { rejectUnauthorized: !insecure, ca: readFileSync(caPath, 'utf8') }
+  } catch {
+    console.error(`\nDB_SSL_CA points at ${caPath}, which could not be read.\n`)
+    process.exit(1)
+  }
+}
 
 const HINTS = `Common causes, in order of likelihood:
   · wrong password            — reset it in Project Settings -> Database, and URL-encode special characters (@ -> %40, # -> %23, : -> %3A)
@@ -268,8 +389,13 @@ try {
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN/i.test(text)) {
     console.error('    Host unreachable from here — check the hostname, the port, and whether this network is IPv4-only.')
   }
-  if (/self.signed|unable to verify|certificate/i.test(text)) {
-    console.error('    TLS failure: use ?sslmode=require with the pooler host, or DB_SSL_INSECURE=true for a proxy you control.')
+  if (/self.signed|self signed|unable to verify|certificate/i.test(text)) {
+    console.error('    A proxy or antivirus is re-signing the connection, or a root is missing —')
+    console.error('    Node ignores the Windows certificate store and Keychain by default. Fixes, in order:')
+    console.error('      NODE_OPTIONS=--use-system-ca   (Node 22.9+)')
+    console.error('      NODE_EXTRA_CA_CERTS=<root.pem> (or DB_SSL_CA=<root.pem>)')
+    console.error('      DB_SSL_INSECURE=true           (last resort: encrypted, unauthenticated)')
+    console.error('    Inspect the chain with: npm run db:smoke -- --tls')
   }
   if (/relation .* does not exist/i.test(text)) {
     console.error('    Tables are missing: run `npm run db:migrate` against this database first.')

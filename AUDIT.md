@@ -939,3 +939,79 @@ the gate passes end to end. **Not verified:** a live Supabase endpoint — this
 sandbox cannot reach `*.supabase.co`, so TLS with their certificate, Supavisor
 behaviour, cold starts and PITR are untested until `db:smoke` is run on the real
 project. That gap is stated in `docs/database.md` rather than papered over.
+
+### 9.24 The first run on someone else's machine — **fixed**
+
+Connecting a real project for the first time produced three failures that had
+nothing to do with Supabase:
+
+- **`npm install` had never been run** (or was partial), and every entry point died
+  with a raw `ERR_MODULE_NOT_FOUND` resolver stack — `pg` from the db scripts,
+  `esbuild` from `npm run dev:backend`. All three now say "node_modules is missing
+  or incomplete — npm install" and exit 1. A dependency that *is* installed still
+  raises its real error.
+- **`PORT=8788` in `.env` silently broke the UI.** The API read `.env`; Vite did
+  not, and proxied `/api` to its hardcoded 8787 default. Every call failed for a
+  reason unrelated to the app. `vite.config.ts` now loads the same `.env`, so
+  `PORT` is the single source of truth for both the listener and the proxy
+  (`API_PROXY_TARGET` and `DEV_PORT` still override). Verified both ways: no
+  `.env` → API 8787, app 5173, proxy 8787; `.env` with `PORT=8788` → API 8788,
+  proxy 8788, with 8787 confirmed empty so the check cannot pass by accident.
+- **The template told people to keep `PORT=8788`** while the README documented
+  8787. Both now describe the same rule, and the `--check` path from 9.23 got used
+  for real: the string it approved was the one that then migrated.
+
+### 9.25 `SELF_SIGNED_CERT_IN_CHAIN` — **diagnosed, not papered over**
+
+The first live migration failed at the TLS handshake, before a single statement ran.
+The cause is almost never the database: Node ships its own root bundle and ignores
+the Windows certificate store and the macOS Keychain, so a corporate proxy, VPN or
+antivirus that re-signs TLS makes every Supabase connection fail while the browser
+works fine.
+
+Rather than tell people to switch verification off:
+
+- **`npm run db:smoke -- --tls`** inspects the chain and nothing else. It proceeds
+  in two passes — first ignoring trust to read the certificate, then with Node's
+  default trust — and reports the subject, the **issuer** and the expiry, then
+  whether the chain verifies. It **first shipped wrong**: a plain `tls.connect()`
+  against 5432, which Postgres cannot answer, because Postgres waits for an
+  SSLRequest packet and replies `S`/`N`/`E` before TLS begins — so a healthy
+  server was reported as `ERR_SSL_WRONG_VERSION_NUMBER`. The probe is now a module
+  that performs the real handshake, and `scripts/verify-tls-probe.mjs` drives it
+  against in-process fake endpoints (S with a generated self-signed certificate,
+  N, E with a message, and one that never answers), so the failure mode is
+  covered rather than assumed. An issuer that is your employer, a VPN vendor or an
+  antivirus confirms interception; `ENOTFOUND`/`ECONNREFUSED`/`ETIMEDOUT` mean the
+  problem is the network and say so. Proven against a real self-signed server
+  (`DEPTH_ZERO_SELF_SIGNED_CERT`) and against a public host (`✓ trusted`).
+- **`DB_SSL_CA`** pins an extra root for the API and both scripts. Verified with a
+  genuine handshake against that self-signed server: without the root the connect is
+  rejected, with it the same handshake verifies — with `rejectUnauthorized` still
+  true. Nine new `verify:db` checks cover the default, the pinned root, a missing
+  file failing loudly by path, and the insecure path still warning.
+- **`DB_SSL_INSECURE`** remains the last resort and now says so in the log: the
+  connection stays encrypted but the server is not authenticated. Previously it
+  downgraded silently.
+
+`NODE_OPTIONS=--use-system-ca` and `NODE_EXTRA_CA_CERTS` need no code and are
+documented first, because they keep verification on.
+
+### 9.26 Exporting the interceptor's root, instead of guessing — **implemented**
+
+`SELF_SIGNED_CERT_IN_CHAIN` left only one reasonable instruction ("find your
+corporate root and point Node at it"), and that is where a person with a working
+database gives up. `npm run db:trust` closes the loop:
+
+1. it performs the real Postgres handshake and walks the presented chain
+   (`getPeerCertificate(true)` → `issuerCertificate`, stopping on self-identity);
+2. it prints each certificate's subject, issuer and expiry, so the interceptor is
+   named rather than inferred;
+3. it writes the chain to a gitignored `db-ca.pem`;
+4. it **reconnects with that file pinned and verification on** — the file is proven
+   before it is recommended, and the exact `.env` line is printed.
+
+It adds nothing to the environment by itself, and says to check with IT first. The
+chain walk and the pinning step are covered by `scripts/verify-tls-probe.mjs`
+against a real self-signed endpoint: export → parse with `X509Certificate` →
+reconnect with `ca` → verify. Ten checks now, ~2s.

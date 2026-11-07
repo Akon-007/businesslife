@@ -37,6 +37,24 @@ if (!url) {
 }
 if (usingDirect) console.log('\nusing DIRECT_URL for the migration (session pooler / direct connection)')
 
+/**
+ * node_modules missing or half-installed is the most common first-run failure,
+ * and the raw ERR_MODULE_NOT_FOUND stack says nothing useful.
+ */
+async function loadPg() {
+  try {
+    return await import('pg')
+  } catch (cause) {
+    if (/Cannot find package 'pg'|ERR_MODULE_NOT_FOUND/.test(String(cause?.message ?? cause))) {
+      console.error('\nThe Postgres driver is not installed — node_modules is missing or incomplete.\n')
+      console.error('  npm install\n')
+      console.error('Then re-run: npm run db:migrate\n')
+      process.exit(1)
+    }
+    throw cause
+  }
+}
+
 const schema = readFileSync(fileURLToPath(new URL('../backend/db/schema.sql', import.meta.url)), 'utf8')
 
 // Keep in sync with pgConnectionString()/sslFor() in backend/db/postgres.ts:
@@ -54,7 +72,7 @@ function normalise(raw) {
   } catch { /* leave it to pg to complain */ }
   return raw
 }
-const ssl = /(^|[?&])sslmode=disable(&|$)/.test(url) ? undefined : { rejectUnauthorized: process.env.DB_SSL_INSECURE !== 'true' }
+const ssl = sslOptions(url)
 
 const HINTS = `Common causes, in order of likelihood:
   · wrong password            — reset it in Project Settings -> Database, and URL-encode special characters (@ -> %40, # -> %23, : -> %3A)
@@ -67,12 +85,34 @@ function describe(error) {
   return `${error instanceof Error ? error.message : String(error)}${code}`
 }
 
+/**
+ * `sslmode=disable` means plaintext; anything else verifies the chain.
+ *
+ * `DB_SSL_CA` pins an extra root — the fix for a TLS-inspecting proxy or
+ * antivirus, because Node reads neither the Windows store nor Keychain by
+ * default and fails with SELF_SIGNED_CERT_IN_CHAIN. Keep in sync with sslFor()
+ * in backend/db/postgres.ts.
+ */
+function sslOptions(raw) {
+  if (/(^|[?&])sslmode=disable(&|$)/.test(raw)) return undefined
+  const insecure = process.env.DB_SSL_INSECURE === 'true'
+  if (insecure) console.warn('[db] TLS verification is off (DB_SSL_INSECURE=true) — encrypted, but the server is not authenticated.')
+  const caPath = (process.env.DB_SSL_CA ?? '').trim()
+  if (!caPath) return { rejectUnauthorized: !insecure }
+  try {
+    return { rejectUnauthorized: !insecure, ca: readFileSync(caPath, 'utf8') }
+  } catch {
+    console.error(`\nDB_SSL_CA points at ${caPath}, which could not be read.\n`)
+    process.exit(1)
+  }
+}
+
 const isTransactionPooler = /pooler\.supabase\.com$/.test(new URL(url).hostname) && new URL(url).port === '6543'
 if (isTransactionPooler) {
   console.warn('\nNote: port 6543 is the transaction pooler. A multi-statement migration is safer on the session pooler (5432) or the direct connection.\n')
 }
 
-const { default: pg } = await import('pg')
+const { default: pg } = await loadPg()
 const client = new pg.Client({ connectionString: normalise(url), ssl })
 let connected = false
 try {
@@ -88,7 +128,16 @@ try {
   console.log(`\nSchema version: ${JSON.stringify(version.rows[0]?.value ?? null)}`)
   console.log(`${rows.length} table(s) present. Migration complete.\n`)
 } catch (error) {
+  const text = String(error instanceof Error ? error.message : error)
   console.error(`\nMigration failed: ${describe(error)}\n`)
+  if (/self.signed|self signed|unable to verify|certificate/i.test(text)) {
+    console.error('  · a proxy or antivirus is re-signing the connection, or a root is missing —')
+    console.error('    Node ignores the Windows certificate store and Keychain by default. Fixes, in order:')
+    console.error('      NODE_OPTIONS=--use-system-ca            (Node 22.9+, uses the OS trust store)')
+    console.error('      NODE_EXTRA_CA_CERTS=<root.pem>          (or DB_SSL_CA=<root.pem>)')
+    console.error('      DB_SSL_INSECURE=true                    (last resort: encrypted, unauthenticated)')
+    console.error('    diagnose the chain with: npm run db:smoke -- --tls')
+  }
   console.error(`${HINTS}\n`)
   process.exitCode = 1
 } finally {
