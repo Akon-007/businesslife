@@ -53,6 +53,8 @@ const PAIRS = [
   ['gold-ink', 'gold-soft', 4.5, 'warning chip on gold'],
   ['ink', 'gold', 4.5, 'dark text on a gold fill'],
   ['ink', 'lime', 4.5, 'dark text on the success fill'],
+  ['ink', 'success', 4.5, 'dark label on a success button'],
+  ['paper-2', 'success-strong', 4.5, 'hovered success button label'],
   ['lime', 'ink-900', 4.5, 'success text on the dark HUD'],
   ['gold', 'ink-900', 4.5, 'warning text on the dark HUD'],
   ['paper-2', 'ink-900', 4.5, 'text on the dark HUD'],

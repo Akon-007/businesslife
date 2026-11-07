@@ -307,7 +307,7 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
         </p>
         <form onSubmit={submit} className="mt-6 space-y-3 rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10">
           <label className="block">
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Your name</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Your name</span>
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -318,7 +318,7 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
             />
           </label>
           <label className="block">
-            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Institution email (optional)</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Institution email (optional)</span>
             <input
               type="email"
               value={email}
@@ -330,7 +330,7 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Password</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Password</span>
               <input
                 type="password"
                 value={password}
@@ -342,7 +342,7 @@ function LecturerLogin({ onSignedIn }: { onSignedIn: () => void }) {
               />
             </label>
             <label className="block">
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">Instructor code</span>
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-300">Instructor code</span>
               <input
                 value={code}
                 onChange={(event) => setCode(event.target.value)}

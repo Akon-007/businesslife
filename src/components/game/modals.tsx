@@ -487,7 +487,7 @@ export function RunEndModal({
                   {verdict.results.map((result) => (
                     <li key={result.objective.id} className="flex items-start gap-1.5 text-[10.5px] leading-snug">
                       <span className={clsx('mt-1 size-1.5 shrink-0 rounded-full', result.met ? 'bg-lime' : 'bg-gold')} />
-                      <span className={result.met ? 'text-white/70' : 'text-white/45'}>
+                      <span className={result.met ? 'text-white/75' : 'text-white/60'}>
                         {result.objective.label}
                         {!result.met ? ` - ${result.objective.hint}` : ''}
                       </span>
