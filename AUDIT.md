@@ -996,3 +996,22 @@ Rather than tell people to switch verification off:
 
 `NODE_OPTIONS=--use-system-ca` and `NODE_EXTRA_CA_CERTS` need no code and are
 documented first, because they keep verification on.
+
+### 9.26 Exporting the interceptor's root, instead of guessing — **implemented**
+
+`SELF_SIGNED_CERT_IN_CHAIN` left only one reasonable instruction ("find your
+corporate root and point Node at it"), and that is where a person with a working
+database gives up. `npm run db:trust` closes the loop:
+
+1. it performs the real Postgres handshake and walks the presented chain
+   (`getPeerCertificate(true)` → `issuerCertificate`, stopping on self-identity);
+2. it prints each certificate's subject, issuer and expiry, so the interceptor is
+   named rather than inferred;
+3. it writes the chain to a gitignored `db-ca.pem`;
+4. it **reconnects with that file pinned and verification on** — the file is proven
+   before it is recommended, and the exact `.env` line is printed.
+
+It adds nothing to the environment by itself, and says to check with IT first. The
+chain walk and the pinning step are covered by `scripts/verify-tls-probe.mjs`
+against a real self-signed endpoint: export → parse with `X509Certificate` →
+reconnect with `ca` → verify. Ten checks now, ~2s.

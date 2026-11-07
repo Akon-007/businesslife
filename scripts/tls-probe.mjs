@@ -37,7 +37,31 @@ function decodePgError(chunk) {
   return printable(body).trim()
 }
 
-export function probeTls({ host, port, isPostgres, rejectUnauthorized, timeoutMs = 15_000 }) {
+const derToPem = (der) => `-----BEGIN CERTIFICATE-----\n${(der.toString('base64').match(/.{1,64}/g) ?? []).join('\n')}\n-----END CERTIFICATE-----\n`
+
+/**
+ * Walk the chain that `tls` hands back (`getPeerCertificate(true)` nests each
+ * issuer in `issuerCertificate`) and return it as PEM, leaf first.
+ *
+ * A self-signed certificate points at itself, so identity — not just depth —
+ * stops the walk.
+ */
+export function chainPem(cert) {
+  const seen = new Set()
+  const out = []
+  let node = cert
+  while (node && node.raw) {
+    const pem = derToPem(node.raw)
+    if (seen.has(pem)) break
+    seen.add(pem)
+    out.push(pem)
+    const issuer = node.issuerCertificate
+    node = issuer && issuer !== node ? issuer : undefined
+  }
+  return out
+}
+
+export function probeTls({ host, port, isPostgres, rejectUnauthorized, ca, timeoutMs = 15_000 }) {
   return new Promise((resolve) => {
     let settled = false
     let socket
@@ -49,7 +73,7 @@ export function probeTls({ host, port, isPostgres, rejectUnauthorized, timeoutMs
     }
 
     if (!isPostgres) {
-      socket = tlsConnect({ host, port, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized }, () => {
+      socket = tlsConnect({ host, port, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized, ...(ca ? { ca } : {}) }, () => {
         const cert = socket.getPeerCertificate(true) || {}
         socket.end()
         finish({ ok: true, cert })
@@ -84,7 +108,7 @@ export function probeTls({ host, port, isPostgres, rejectUnauthorized, timeoutMs
       const rest = chunk.subarray(1)
       if (rest.length) raw.unshift(rest)
 
-      const secure = tlsConnect({ socket: raw, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized }, () => {
+      const secure = tlsConnect({ socket: raw, ...(isIP(host) ? {} : { servername: host }), rejectUnauthorized, ...(ca ? { ca } : {}) }, () => {
         const cert = secure.getPeerCertificate(true) || {}
         secure.end()
         finish({ ok: true, cert })

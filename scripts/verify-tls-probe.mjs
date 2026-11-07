@@ -19,7 +19,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import net from 'node:net'
 import tls from 'node:tls'
-import { probeTls, SSL_REQUEST } from './tls-probe.mjs'
+import { X509Certificate } from 'node:crypto'
+import { chainPem, probeTls, SSL_REQUEST } from './tls-probe.mjs'
 
 let failures = 0
 const check = (label, ok, detail = '') => {
@@ -105,6 +106,17 @@ if (material) {
 
   const strict = await probeTls({ host: '127.0.0.1', port: tlsPort, isPostgres: true, rejectUnauthorized: true })
   check('an untrusted chain is rejected when verification is on', strict.ok === false && /SELF_SIGNED/i.test(String(strict.code)), `${strict.code}: ${strict.message}`)
+
+  // `npm run db:trust` exports the chain and claims that pinning it fixes the
+  // handshake. Prove exactly that, rather than printing the claim.
+  const chain = chainPem(lenient.cert)
+  check('the presented chain is exported as PEM', chain.length === 1 && chain[0].startsWith('-----BEGIN CERTIFICATE-----'), `${chain.length} certificate(s)`)
+  check('the exported PEM parses as a certificate', (() => {
+    try { return new X509Certificate(chain[0]).subject.includes('CN=localhost') } catch { return false }
+  })())
+
+  const pinned = await probeTls({ host: '127.0.0.1', port: tlsPort, isPostgres: true, rejectUnauthorized: true, ca: chain.join('\n') })
+  check('pinning that exported root makes the same handshake verify', pinned.ok === true, pinned.code ?? pinned.message)
 } else {
   console.log('  ! openssl not available — skipping the two handshake checks, still testing S/N/E')
 }

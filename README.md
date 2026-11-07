@@ -42,6 +42,8 @@ npm run verify:db      # schema, upserts, deletes and jsonb round-trip against r
 npm run verify:e2e     # Playwright journeys + axe accessibility (needs `npx playwright install chromium`; CI runs it)
 npm run db:migrate      # apply backend/db/schema.sql to SUPABASE_DB_URL (or DATABASE_URL)
 npm run db:smoke        # prove a live endpoint: TLS, pooler mode, RLS, write/read/delete
+npm run db:smoke -- --tls   # inspect only the certificate chain (issuer, expiry, trust)
+npm run db:trust        # export that chain to db-ca.pem and prove pinning fixes it
 npm run build           # production build
 npm run lint            # oxlint
 ```

@@ -104,6 +104,17 @@ prints the subject, the **issuer** and the expiry, then says whether Node's own
 trust store accepts the chain. If the issuer is your employer, a VPN vendor or
 an antivirus product, interception is confirmed.
 
+If hunting for that root is the annoying part, export it instead:
+
+```bash
+npm run db:trust          # writes ./db-ca.pem (gitignored) and proves it works
+```
+
+It reads the chain the server actually presents, writes it as PEM, then reconnects
+with that file pinned and reports whether verification now passes — so the file is
+tested before you rely on it. On a managed laptop, confirm with IT that the root is
+one you are meant to trust; the command adds nothing automatically.
+
 Fixes, in order of preference — all keep verification on:
 
 ```bash

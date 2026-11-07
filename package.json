@@ -34,7 +34,8 @@
     "verify:db-url": "node scripts/verify-db-url.mjs",
     "verify:tls-probe": "node scripts/verify-tls-probe.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
-    "db:smoke": "node scripts/db-smoke.mjs"
+    "db:smoke": "node scripts/db-smoke.mjs",
+    "db:trust": "node scripts/db-trust.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
