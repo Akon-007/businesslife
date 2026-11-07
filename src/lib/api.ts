@@ -307,6 +307,8 @@ export interface Cohort {
   scenario: Record<string, unknown> | null
   createdAt: string
   roster?: RosterEntry[]
+  /** LMS platform this cohort grades back into, when configured. */
+  lti?: LtiConfig | null
 }
 
 export async function instructorLogin(name: string, email?: string, password?: string, instructorCode?: string) {
@@ -403,6 +405,42 @@ export interface CohortComparison {
 /** Cohort-level comparison and per-student competency profiles. */
 export function fetchComparison(classId: string): Promise<CohortComparison> {
   return request(`/api/classes/${classId}/comparison`, { scope: 'instructor' })
+}
+
+export interface LtiConfig {
+  issuer: string
+  clientId: string
+  deploymentId?: string
+  tokenUrl: string
+  lineItemUrl: string
+  scope?: string
+  configuredAt?: string
+}
+
+export interface LtiPassbackResult {
+  studentId: string
+  status: 'sent' | 'dry-run' | 'failed' | 'skipped'
+  statusCode?: number
+  error?: string
+  request?: {
+    tokenUrl: string
+    lineItemUrl: string
+    assertion: { header: Record<string, unknown>; claims: Record<string, unknown> }
+    score: Record<string, unknown>
+  }
+}
+
+/** Save (or clear) the LMS platform this cohort grades back into. */
+export function configureLti(classId: string, payload: Partial<LtiConfig> & { clear?: boolean }): Promise<{ lti: LtiConfig | null }> {
+  return request(`/api/classes/${classId}/lti`, { method: 'POST', scope: 'instructor', body: JSON.stringify(payload) })
+}
+
+/** Send graded students' marks to the LMS. Dry run by default. */
+export function passbackGrades(
+  classId: string,
+  payload: { dryRun?: boolean; studentIds?: string[] } = {},
+): Promise<{ dryRun: boolean; sent: number; failed: number; skipped: number; results: LtiPassbackResult[] }> {
+  return request(`/api/classes/${classId}/lti/passback`, { method: 'POST', scope: 'instructor', body: JSON.stringify(payload) })
 }
 
 export function gradeStudent(

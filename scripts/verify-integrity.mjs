@@ -6,6 +6,9 @@
  *   node scripts/verify-integrity.mjs            # against http://127.0.0.1:8788
  *   API=http://127.0.0.1:8787 node scripts/verify-integrity.mjs
  */
+import { createVerify, createPublicKey } from 'node:crypto'
+import { createServer } from 'node:http'
+
 const API = process.env.API ?? 'http://127.0.0.1:8788'
 
 let passed = 0
@@ -308,6 +311,90 @@ async function main() {
   )
   check('the comparison counts integrity verdicts', typeof stats.integrity?.verified === 'number')
   check('the comparison counts replay verdicts', typeof stats.replay?.match === 'number')
+
+  console.log('\nLTI Advantage passback')
+
+  const jwks = await call('/api/lti/jwks')
+  const key = jwks.body?.keys?.[0] ?? {}
+  check('the platform publishes a JWKS anonymously', jwks.status === 200 && Array.isArray(jwks.body?.keys), `status ${jwks.status}`)
+  check('the published key is an RS256 signing key', key.kty === 'RSA' && key.alg === 'RS256' && key.use === 'sig' && Boolean(key.kid), JSON.stringify({ kty: key.kty, alg: key.alg, kid: key.kid }))
+  check('the JWKS never exposes private material', !('d' in key) && !('p' in key) && !('q' in key), Object.keys(key).join(','))
+
+  const forbiddenLti = await call(`/api/classes/${classId}/lti`, { method: 'POST', token: learner.token, body: { issuer: 'https://lms.test', clientId: 'c', tokenUrl: 'https://lms.test/token', lineItemUrl: 'https://lms.test/li/1' } })
+  check('students cannot configure an LMS platform', forbiddenLti.status === 403, `status ${forbiddenLti.status}`)
+
+  const badLti = await call(`/api/classes/${classId}/lti`, { method: 'POST', token: instructor.token, body: { issuer: 'https://lms.test', clientId: 'c', tokenUrl: 'not-a-url', lineItemUrl: 'https://lms.test/li/1' } })
+  check('a malformed platform configuration is rejected', badLti.status === 400, `status ${badLti.status}`)
+
+  const noPlatform = await call(`/api/classes/${classId}/lti/passback`, { method: 'POST', token: instructor.token, body: { dryRun: true } })
+  check('passback without a configured platform is refused', noPlatform.status === 400, `status ${noPlatform.status}`)
+
+  // A stub LMS: it verifies our assertion with the published key, trades it for
+  // a token, and accepts one score. This exercises the real client path.
+  const received = { tokens: 0, scores: [] }
+  const platform = createServer(async (request, response) => {
+    const chunks = []
+    for await (const chunk of request) chunks.push(chunk)
+    const raw = Buffer.concat(chunks).toString('utf8')
+    if (request.url === '/token') {
+      const assertion = new URLSearchParams(raw).get('client_assertion') ?? ''
+      const [header, payload, signature] = assertion.split('.')
+      const decode = (part) => JSON.parse(Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'))
+      const valid = Boolean(header && payload && signature) && createVerify('RSA-SHA256').update(`${header}.${payload}`).end().verify(createPublicKey({ key, format: 'jwk' }), Buffer.from(signature.replace(/-/g, '+').replace(/_/g, '/'), 'base64'))
+      received.tokens += 1
+      received.assertion = valid ? { ...decode(payload), header: decode(header) } : null
+      if (!valid) { response.writeHead(401).end(JSON.stringify({ error: 'invalid_client' })); return }
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ access_token: 'stub-token', token_type: 'Bearer', expires_in: 3600 }))
+      return
+    }
+    if (request.url === '/lineitem/scores') {
+      received.scores.push({ authorization: request.headers.authorization, contentType: request.headers['content-type'], body: JSON.parse(raw) })
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true }))
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise((resolve) => platform.listen(0, '127.0.0.1', resolve))
+  const port = platform.address().port
+  const stub = `http://127.0.0.1:${port}`
+
+  const configured = await call(`/api/classes/${classId}/lti`, { method: 'POST', token: instructor.token, body: { issuer: 'https://lms.test', clientId: 'businesslife-test', deploymentId: 'd1', tokenUrl: `${stub}/token`, lineItemUrl: `${stub}/lineitem` } })
+  check('instructor configures the LMS platform', configured.status === 200 && configured.body?.lti?.clientId === 'businesslife-test', `status ${configured.status}`)
+
+  const dry = await call(`/api/classes/${classId}/lti/passback`, { method: 'POST', token: instructor.token, body: { dryRun: true } })
+  const dryResult = (dry.body?.results ?? [])[0] ?? {}
+  check('a dry run builds a request without sending it', dry.status === 200 && dry.body?.dryRun === true && received.tokens === 0, `tokens ${received.tokens}`)
+  check('the dry run signs an RS256 assertion', dryResult.request?.assertion?.header?.alg === 'RS256' && Boolean(dryResult.request?.assertion?.header?.kid))
+  check(
+    'the assertion claims name the issuer, client and audience',
+    dryResult.request?.assertion?.claims?.iss === 'https://lms.test' && dryResult.request?.assertion?.claims?.sub === 'businesslife-test' && dryResult.request?.assertion?.claims?.aud === `${stub}/token`,
+    JSON.stringify(dryResult.request?.assertion?.claims),
+  )
+  check('the assertion expires within minutes', dryResult.request?.assertion?.claims?.exp - dryResult.request?.assertion?.claims?.iat <= 600)
+  check('the score payload is a 100-point scale', dryResult.request?.score?.scoreMaximum === 100 && dryResult.request?.score?.scoreGiven === 78, JSON.stringify(dryResult.request?.score))
+  check('the score names the student', dryResult.request?.score?.userId === learner.player.id)
+
+  const sent = await call(`/api/classes/${classId}/lti/passback`, { method: 'POST', token: instructor.token, body: { dryRun: false } })
+  const sentResult = (sent.body?.results ?? [])[0] ?? {}
+  check('a real passback trades the assertion for a token', received.tokens === 1, `tokens ${received.tokens}`)
+  check('the stub platform verified our signature', Boolean(received.assertion), JSON.stringify(received.assertion))
+  check('the platform received one score', received.scores.length === 1, `scores ${received.scores.length}`)
+  check('the score is sent as an AGS score document', received.scores[0]?.contentType === 'application/vnd.ims.lis.v1.score+json', String(received.scores[0]?.contentType))
+  check('the score carries the bearer token', received.scores[0]?.authorization === 'Bearer stub-token', String(received.scores[0]?.authorization))
+  check('the API reports the grade as sent', sent.body?.sent === 1 && sentResult.status === 'sent', JSON.stringify({ sent: sent.body?.sent, status: sentResult.status }))
+  const passbackAudit = await call(`/api/companies/${companyId}/audit`, { token: learner.token })
+  check('a sent grade is written to the student audit chain', (passbackAudit.body?.records ?? []).some((record) => record.type === 'lti_passback'))
+
+  await new Promise((resolve) => platform.close(resolve))
+  const unreachable = await call(`/api/classes/${classId}/lti/passback`, { method: 'POST', token: instructor.token, body: { dryRun: false } })
+  check(
+    'an unreachable platform fails cleanly instead of throwing',
+    unreachable.status === 200 && (unreachable.body?.failed ?? 0) === 1 && Boolean((unreachable.body?.results ?? [])[0]?.error),
+    JSON.stringify({ status: unreachable.status, failed: unreachable.body?.failed }),
+  )
+
+  const unlinked = await call(`/api/classes/${classId}/lti`, { method: 'POST', token: instructor.token, body: { clear: true } })
+  check('the platform configuration can be removed', unlinked.status === 200 && unlinked.body?.lti === null)
 
   const reset = await call(`/api/classes/${classId}/reset`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id } })
   check('instructor resets a run', reset.status === 200 && reset.body?.authority?.score === 0, JSON.stringify(reset.body?.authority))

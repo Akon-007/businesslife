@@ -764,3 +764,33 @@ and their 25/20/15/15/15/10 weights are present, bucket counts sum to the cohort
 the competency means and proficient shares match recorded levels, the profile recomputes the weighted grade,
 every grade is retained in history, and the trend equals latest minus first. Wiring is now **24/24** client calls
 resolved.
+
+### 9.20 LTI Advantage passback (AGS) — **implemented, verified against a stub platform**
+
+Marks had to leave the app to be useful in a course. This implements the grade passback half of LTI Advantage
+(Assignment and Grade Services):
+
+| Piece | Where |
+|---|---|
+| Platform keypair, created once and persisted (`kid`, public JWK, PKCS#8 private key) | `ensureLtiKeys` in `backend/lti.ts` |
+| Public verification set the LMS fetches anonymously | `GET /api/lti/jwks` |
+| RS256 client assertion: `iss`, `sub`, `aud` = token URL, `iat`, 5-minute `exp`, `jti` | `signAssertion` |
+| OAuth2 client-credentials exchange, then an AGS score document | `passbackScore` |
+| Per-cohort platform config (instructor only) and a recorded passback | `POST /api/classes/:id/lti`, `POST …/lti/passback` |
+| UI: save platform, **preview** (default), send (confirmed), unlink | `LtiCard` in `Lecturer.tsx` |
+
+A grade that leaves the building is written to that student's audit chain (`lti_passback`), so the passback is
+as traceable as the mark it carries. A dry run returns the exact assertion header/claims and score payload
+without opening a socket — the UI defaults to it because a sent grade cannot be recalled.
+
+**Honest scope.** The OIDC `id_token` launch (login initiation and validation of the platform's signature),
+Deep Linking and NRPS are **not** implemented; a cohort is configured with the platform's endpoints instead.
+There is no retry queue: one student per call, and failures are reported per student rather than retried.
+
+**Verification.** `verify:api` gained 22 checks (119 total, 0 failures). The passback is exercised end to end
+against a **stub LMS started by the test**: it fetches our JWKS, verifies the RS256 signature with the published
+key, checks the claims (issuer, client, audience, five-minute expiry), returns a token, and asserts the score
+arrives with the AGS content type, the bearer token and a 100-point maximum. It also proves the platform config
+is instructor-only (students get 403), that malformed URLs and unconfigured cohorts are refused, that a sent
+grade reaches the audit chain, and that an unreachable platform fails per student instead of throwing. Wiring is
+now **26/26** client calls resolved.

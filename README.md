@@ -61,6 +61,7 @@ job installs Chromium and runs the Playwright journeys and the axe accessibility
 | Operations: purchase orders, lead times, capacity, returns | `src/game/supply.ts`, `src/components/game/OperationsPanel.tsx` |
 | Sales funnel: leads, qualification, quotes, retainers | `src/game/sales.ts`, `src/components/game/SalesFunnel.tsx` |
 | Scenario packs: eight starting positions, objectives, rule version | `src/game/scenarios.ts`, `src/components/game/Onboarding.tsx` |
+| LTI Advantage passback (keys, assertion, AGS score) | `backend/lti.ts`, `LtiCard` in `src/pages/Lecturer.tsx` |
 | Frontend ↔ backend wiring matrix | `docs/wiring.md`, `scripts/verify-wiring.mjs` |
 | Server-side execution of the journal | `backend/replay.ts`, `backend-dist/engine.mjs` |
 | Accounts, sessions, password hashing | `backend/auth.ts` |
@@ -178,7 +179,9 @@ Grading uses `GET /api/rubric`: financial acumen (25%), strategy & priorities (2
 execution (15%), market & customer (15%), leadership & team (15%), ethics & governance (10%), each
 scored 1–4 and weighted into the 0–100 grade. The portal also shows a **cohort comparison** — mean grade,
 marking delta, competency means and distributions, score bands, integrity and replay counts — and a per-student
-**competency profile over time** built from the grade history. Legacy four-criterion grades are still accepted with a
+**competency profile over time** built from the grade history, and can **push grades to an LMS** over LTI
+Advantage AGS (signed RS256 assertion → OAuth2 token → score), with a preview that shows exactly what would be
+sent before anything leaves the building. Legacy four-criterion grades are still accepted with a
 documented mapping, and a rubric grade is rejected unless every criterion is present and a rationale
 of at least 40 characters is supplied. The stored record keeps the levels, the rationale, the engine score at
 grading time and the resulting delta; the audit chain receives a SHA-256 digest of the rationale.

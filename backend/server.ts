@@ -13,6 +13,7 @@ import { IN_GAME_APPS } from './apps.js'
 import { appendAudit, applyCanonical, authorityOf, emptyAuthority, publicAuthority, validateSnapshot, verifyChain, type RunSnapshot } from './authority.js'
 import { CHARACTERS, factsFor, runDialogue, traceDialogue } from './ai.js'
 import { comparisonFor, recordFor, rosterCsv, rosterFor, scenarioStart } from './classroom.js'
+import { ltiJwks, parseLtiConfig, passbackScore } from './lti.js'
 import { MIN_RATIONALE, RUBRIC, parseRubric, rubricBreakdown, rubricGrade } from './rubric.js'
 import { MAX_REPLAY_OPS, projectionFromSnapshot, runReplay, type ReplayInput, type ReplayVerdict } from './replay.js'
 import { addMessage, applyIncidentOutcome, createComment, createIncident, createPost, ensureCommunications, generateNpcActivity, notification, openConversation, reputation } from './social.js'
@@ -201,6 +202,10 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     await saveDatabase(database)
     send(response, 200, { player: publicPlayer(player), token: session.token, expiresAt: session.expiresAt }); return
   }
+  if (request.method === 'GET' && path === '/api/lti/jwks') {
+    // The LMS fetches this anonymously to verify our assertions.
+    send(response, 200, ltiJwks(database)); return
+  }
   if (request.method === 'POST' && path === '/api/auth/dev-login') {
     if (!devLoginEnabled()) { error(response, 403, 'Development sign-in is disabled. Create an account or sign in.'); return }
     const input = await body(request); const requestedRole = String(input.role ?? 'learner'); const role: Player['role'] = requestedRole === 'instructor' || requestedRole === 'admin' ? requestedRole : 'learner'
@@ -234,6 +239,57 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     const action = classMatch[2] ?? ''
     const lecturer = classroom.lecturerId === player.id && isInstructor(player)
     if (request.method === 'GET' && !action) { send(response, 200, { ...classroom, roster: rosterFor(database, classroom) }); return }
+    if (request.method === 'POST' && action === 'lti') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      const input = await body(request)
+      if (input.clear === true) {
+        classroom.lti = null
+        await saveDatabase(database)
+        send(response, 200, { lti: null }); return
+      }
+      const config = parseLtiConfig(input)
+      if (!config) { error(response, 400, 'An LTI platform needs an issuer, a client id, a token URL and a line item URL.'); return }
+      classroom.lti = { ...config, configuredAt: now(), configuredBy: player.id }
+      await saveDatabase(database)
+      send(response, 200, { lti: classroom.lti }); return
+    }
+    if (request.method === 'POST' && action === 'lti/passback') {
+      if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
+      if (!classroom.lti) { error(response, 400, 'Configure an LTI platform for this cohort first.'); return }
+      const input = await body(request)
+      const dryRun = input.dryRun !== false
+      const roster = rosterFor(database, classroom)
+      const studentIds = Array.isArray(input.studentIds) ? input.studentIds.map(String) : null
+      const requested = studentIds ? roster.filter((entry) => studentIds.includes(entry.studentId)) : roster
+      const graded = requested.filter((entry) => entry.grade !== null)
+      const results = []
+      for (const entry of graded) {
+        results.push(
+          await passbackScore(database, classroom.lti, {
+            studentId: entry.studentId,
+            grade: entry.grade as number,
+            comment: entry.feedback ?? undefined,
+          }, { dryRun }),
+        )
+      }
+      if (!dryRun) {
+        // Every grade that left the building is written to that student's audit
+        // chain, so the passback is as traceable as the mark it carries.
+        for (const result of results) {
+          if (result.status !== 'sent') continue
+          const company = database.companies.filter((item) => item.playerId === result.studentId).pop()
+          if (company) appendAudit(company, 'lti_passback', player.id, { cohortId: classroom.id, grade: result.request?.score.scoreGiven })
+        }
+        await saveDatabase(database)
+      }
+      send(response, 200, {
+        dryRun,
+        sent: results.filter((item) => item.status === 'sent' || item.status === 'dry-run').length,
+        failed: results.filter((item) => item.status === 'failed').length,
+        skipped: requested.length - graded.length,
+        results,
+      }); return
+    }
     if (request.method === 'GET' && action === 'comparison') {
       if (!lecturer) { error(response, 403, 'Instructor access required.'); return }
       send(response, 200, comparisonFor(database, classroom)); return

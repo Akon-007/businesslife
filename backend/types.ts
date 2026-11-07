@@ -239,6 +239,17 @@ export interface ClassRoom {
   scenario: Record<string, unknown> | null
   createdAt: string
   records?: ClassroomRecord[]
+  /** LTI Advantage platform this cohort grades back into, when configured. */
+  lti?: {
+    issuer: string
+    clientId: string
+    deploymentId?: string
+    tokenUrl: string
+    lineItemUrl: string
+    scope?: string
+    configuredAt?: string
+    configuredBy?: Id
+  } | null
 }
 
 export interface GradeHistoryEntry {
@@ -377,4 +388,11 @@ export interface Database {
   idempotency: Array<{ key: string; playerId: string; response: unknown; createdAt: string }>
   npcs: Npc[]
   marketplace: MarketplaceState
+  /** Platform signing key for LTI assertions, created once and kept. */
+  ltiKeys?: {
+    kid: string
+    publicJwk: Record<string, unknown>
+    privatePem: string
+    createdAt: string
+  }
 }

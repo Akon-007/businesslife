@@ -21,8 +21,11 @@ import {
   clearSession,
   createClass,
   downloadRosterCsv,
+  configureLti,
   fetchComparison,
   fetchReplay,
+  passbackGrades,
+  type LtiPassbackResult,
   fetchRoster,
   gradeStudent,
   instructorLogin,
@@ -265,6 +268,7 @@ export default function Lecturer() {
                 }
               />
               {comparison ? <ComparisonCard comparison={comparison} /> : null}
+              <LtiCard cohort={selected} onSaved={() => void refresh(selected.id)} />
             </>
           )}
         </section>
@@ -965,5 +969,159 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <p className="mt-0.5 font-display text-[15px] font-semibold tabular-nums text-ink">{value}</p>
       {hint ? <p className="text-[9px] text-ink-400">{hint}</p> : null}
     </div>
+  )
+}
+
+/**
+ * LTI Advantage passback.
+ *
+ * The LMS gradebook is where a course's marks have to end up. This card holds
+ * the platform configuration and the two deliberate actions: preview what would
+ * be sent, or send it. Preview is the default because a grade that leaves the
+ * building cannot be recalled.
+ */
+function LtiCard({ cohort, onSaved }: { cohort: Cohort; onSaved: () => void }) {
+  const [issuer, setIssuer] = useState(cohort.lti?.issuer ?? '')
+  const [clientId, setClientId] = useState(cohort.lti?.clientId ?? '')
+  const [deploymentId, setDeploymentId] = useState(cohort.lti?.deploymentId ?? '')
+  const [tokenUrl, setTokenUrl] = useState(cohort.lti?.tokenUrl ?? '')
+  const [lineItemUrl, setLineItemUrl] = useState(cohort.lti?.lineItemUrl ?? '')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [results, setResults] = useState<LtiPassbackResult[] | null>(null)
+
+  const configured = Boolean(cohort.lti?.issuer)
+
+  const call = async (action: () => Promise<void>) => {
+    setBusy(true)
+    setMessage('')
+    try {
+      await action()
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'That did not work.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="size-4 text-brand-700" />
+          <p className="font-display text-[14px] font-semibold">LTI passback</p>
+        </div>
+        <span className={clsx('rounded-full px-2 py-0.5 text-[10px] font-bold', configured ? 'bg-brand-50 text-brand-800' : 'bg-paper-3 text-ink-500')}>
+          {configured ? `linked to ${cohort.lti?.issuer}` : 'not configured'}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-500">
+        Grades leave as a signed OAuth2 client-credentials exchange (RS256 assertion → access token → AGS score).
+        The platform verifies us against the public keys at <code className="rounded bg-paper-3 px-1 py-0.5 text-[10px]">/api/lti/jwks</code>.
+      </p>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <Field label="Issuer">
+          <input value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="https://lms.school.edu" className={inputClass} />
+        </Field>
+        <Field label="Client id">
+          <input value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="businesslife-prod" className={inputClass} />
+        </Field>
+        <Field label="Token URL">
+          <input value={tokenUrl} onChange={(event) => setTokenUrl(event.target.value)} placeholder="https://lms.school.edu/login/oauth2/token" className={inputClass} />
+        </Field>
+        <Field label="Line item URL">
+          <input value={lineItemUrl} onChange={(event) => setLineItemUrl(event.target.value)} placeholder="https://lms.school.edu/ags/lineitems/42" className={inputClass} />
+        </Field>
+        <Field label="Deployment id (optional)">
+          <input value={deploymentId} onChange={(event) => setDeploymentId(event.target.value)} className={inputClass} />
+        </Field>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() =>
+            call(async () => {
+              await configureLti(cohort.id, { issuer, clientId, deploymentId, tokenUrl, lineItemUrl })
+              onSaved()
+              setMessage('Platform saved. Preview a passback before sending.')
+            })
+          }
+          className={buttonClass('primary', 'sm')}
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+          Save platform
+        </button>
+        <button
+          type="button"
+          disabled={busy || !configured}
+          onClick={() =>
+            call(async () => {
+              const result = await passbackGrades(cohort.id, { dryRun: true })
+              setResults(result.results)
+              setMessage(`Preview: ${result.sent} grade(s) ready, ${result.skipped} ungraded student(s) skipped. Nothing was sent.`)
+            })
+          }
+          className={buttonClass('secondary', 'sm')}
+        >
+          Preview passback
+        </button>
+        <button
+          type="button"
+          disabled={busy || !configured}
+          onClick={() => {
+            if (!window.confirm('Send the recorded grades to the LMS gradebook? This cannot be undone.')) return
+            void call(async () => {
+              const result = await passbackGrades(cohort.id, { dryRun: false })
+              setResults(result.results)
+              setMessage(`Sent ${result.sent}, failed ${result.failed}, skipped ${result.skipped}.`)
+              onSaved()
+            })
+          }}
+          className={buttonClass('dark', 'sm')}
+        >
+          Send grades
+        </button>
+        {configured ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              call(async () => {
+                await configureLti(cohort.id, { clear: true })
+                setResults(null)
+                onSaved()
+                setMessage('Platform configuration cleared.')
+              })
+            }
+            className={buttonClass('ghost', 'sm')}
+          >
+            Unlink
+          </button>
+        ) : null}
+      </div>
+
+      {message ? <p className="mt-2 text-[11px] font-semibold text-ink-600">{message}</p> : null}
+      {results && results.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {results.map((result) => (
+            <li key={result.studentId} className="rounded-lg bg-paper-3/70 px-2.5 py-1.5 text-[10.5px]">
+              <span className="font-semibold text-ink-700">{result.studentId.slice(0, 12)}…</span>{' '}
+              <span className={result.status === 'failed' ? 'text-coral' : 'text-success-strong'}>{result.status}</span>
+              {result.request ? (
+                <span className="text-ink-500">
+                  {' '}
+                  · score {String((result.request.score as { scoreGiven?: number }).scoreGiven)} / 100 · aud{' '}
+                  {String((result.request.assertion.claims as { aud?: string }).aud ?? '')}
+                </span>
+              ) : null}
+              {result.error ? <span className="block text-coral">{result.error}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   )
 }
