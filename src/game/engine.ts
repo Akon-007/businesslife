@@ -29,8 +29,38 @@ import {
   unitEconomics,
   withChannelShare,
 } from './marketing'
+import {
+  MAX_ORDERS,
+  MAX_ORDER_COVER,
+  UNSERVED_CHURN,
+  overloadOf,
+  advanceOrders,
+  cancelOrder as cancelPurchaseOrder,
+  capacityOf,
+  capacityView,
+  defectRate,
+  expediteCost,
+  expediteOrder as expeditePurchaseOrder,
+  makeOrder,
+  openOrders,
+  refundEstimate,
+  servedShare,
+  slipChance,
+} from './supply'
+import {
+  QUALIFICATION_FEE,
+  QUOTE_VALID_MONTHS,
+  arriveLeads,
+  quoteChance,
+  quoteValue,
+  resolveQuotes,
+  scoreLead,
+  tickContracts,
+} from './sales'
 import type {
   Bill,
+  Contract,
+  Lead,
   Candidate,
   CrisisDef,
   CrisisState,
@@ -302,6 +332,11 @@ export function startGame(input: {
     restockMonths: industry.inventory ? 1 : 0,
     pipeline: [makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 1)), makeDeal(input.industry, 0, rngFor(seed, 'pipeline', 0, 2))],
     pipelineWon: 0,
+    leads: [],
+    contracts: [],
+    orders: industry.inventory
+      ? [makeOrder({ id: 'po-0', supplierId: suppliers[0].id, cover: 1, month: 0, leadMonths: suppliers[0].leadMonths, slip: false })]
+      : [],
     competitors: makeCompetitors(input.industry),
     economy: economyForMonth(0, economyOffset),
     economyOffset,
@@ -783,14 +818,33 @@ export function advanceMonth(state: GameState): GameState {
   const branchOverhead = sum(openBranches(state).map((branch) => branch.overhead))
   const branchDemand = branchDemandOf(state)
 
+  // --- operations: deliveries, then the policy order for next month -------
+  const orderTick = advanceOrders(state.orders ?? [], month)
+  let orders = orderTick.orders
+  if (industry.inventory && (state.restockMonths ?? 0) > 0 && openOrders(orders).length < MAX_ORDERS) {
+    // The restock policy is a standing order: it is placed every close, and
+    // arrives after the supplier's lead time — or a month later if they slip.
+    const slipRng = rngFor(state.seed ?? 0, 'supplier-slip', month)
+    orders = [
+      ...orders,
+      makeOrder({
+        id: `po-${month}-policy`,
+        supplierId: supplier?.id ?? 'unknown',
+        cover: state.restockMonths ?? 0,
+        month,
+        leadMonths: supplier?.leadMonths ?? 1,
+        slip: slipRng() < slipChance(supplier?.reliability ?? 0.85),
+        note: 'Restock policy',
+      }),
+    ]
+  }
+
   let inventory = state.inventory ?? 0
   let stockout = false
   let spoilage = 0
   if (industry.inventory) {
-    stockout = inventory < 0.7
-    const reliability = supplier?.reliability ?? 0.85
-    const incoming = Math.max(0, (state.restockMonths ?? 0) * reliability)
-    inventory = clamp(inventory - 1 + incoming, 0, 6)
+    stockout = inventory + orderTick.arrived < 0.7
+    inventory = clamp(inventory - 1 + orderTick.arrived, 0, 6)
     if (state.industry === 'fnb' || state.industry === 'retail') {
       const overflow = Math.max(0, inventory - 3.2)
       if (overflow > 0.2) {
@@ -800,8 +854,44 @@ export function advanceMonth(state: GameState): GameState {
     }
   }
 
+  // --- the B2B funnel -----------------------------------------------------
+  // Quotes resolve first (the buyer's answer is about last month's offer), then
+  // live retainers pay, then new leads arrive for this month's work.
+  const salesRng = rngFor(state.seed ?? 0, 'funnel', month)
+  const quoteOutcome = resolveQuotes(state.leads ?? [], month, state.price, salesRng)
+  const contractTick = tickContracts([...(state.contracts ?? []), ...quoteOutcome.contracts])
+  const newLeads = arriveLeads({
+    industry: state.industry,
+    month,
+    price: state.price,
+    marketingSpend: state.marketingSpend ?? 0,
+    reputation: state.reputation,
+    salesHeads: state.team.filter((member) => member.role === 'sales').length,
+    liveContracts: contractTick.active,
+    openLeads: quoteOutcome.leads.filter((lead) => lead.status === 'open' || lead.status === 'qualified').length,
+    rng: salesRng,
+  })
+  const leads: Lead[] = [...quoteOutcome.leads, ...newLeads]
+  const contracts: Contract[] = contractTick.contracts
   const supplyFactor = stockout ? 0.86 : 1
-  const revenue = Math.round(state.customers * state.price * season * supplyFactor)
+  // Capacity decides how much of the demand you created you can actually serve.
+  const capacity = capacityOf(state)
+  const capacityNow = capacityView(state.customers, capacity)
+  const opsOverload = overloadOf(state.customers, capacity)
+  const served = servedShare(state.customers, capacity)
+  const tradingRevenue = Math.round(state.customers * state.price * season * supplyFactor * served)
+  // Retainers are billed and collected inside the month, so they add to both
+  // revenue and cash sales and never enter the receivables ledger.
+  const contractRevenue = contractTick.revenue
+  const revenue = tradingRevenue + contractRevenue
+  // Refunds: cheap suppliers and an overloaded operation come back as returns.
+  const defect = defectRate({
+    supplierQuality: supplier?.quality ?? 0,
+    capacityOverload: opsOverload,
+    quality: state.quality,
+    reliability: supplier?.reliability ?? 0.85,
+  })
+  const returns = refundEstimate(tradingRevenue, defect)
   const cogs = Math.round(
     state.customers * industry.costPerCustomer * season * (supplier?.costIndex ?? 1) * supplyFactor,
   )
@@ -828,10 +918,13 @@ export function advanceMonth(state: GameState): GameState {
 
   let workingState: GameState = { ...state, month, quality, economy }
   const pipeline = advancePipeline(workingState)
+
   const newCustomers = newCustomersEstimate(workingState)
   const churnRate = estimateChurn(workingState)
   const churned = Math.round(state.customers * churnRate)
-  const customers = Math.max(0, state.customers + newCustomers - churned + pipeline.customers)
+  // Customers you could not serve leave faster than the normal churn rate.
+  const unservedChurn = Math.round(Math.max(0, state.customers - capacity) * UNSERVED_CHURN)
+  const customers = Math.max(0, state.customers + newCustomers - churned - unservedChurn + pipeline.customers)
 
   const overhead =
     industry.fixedCosts +
@@ -840,13 +933,13 @@ export function advanceMonth(state: GameState): GameState {
     trainingBudget +
     state.team.length * 180 +
     branchOverhead
-  const costs = payrollBefore + overhead + interest + cogs + spoilage
+  const costs = payrollBefore + overhead + interest + cogs + spoilage + returns
 
   // Revenue is accrued when the customer buys; cash arrives when the invoice
   // falls due. This gap is what the receivables ledger tracks.
   const credit = CREDIT_TERMS[industry.id]
-  const invoiced = Math.round(revenue * credit.share)
-  const cashSales = revenue - invoiced
+  const invoiced = Math.round(tradingRevenue * credit.share)
+  const cashSales = tradingRevenue - invoiced + contractRevenue
   const defaultRate = economy.phase === 'recession' ? 0.12 : 0.06
   const settlement = settleInvoices(
     state.invoices ?? [],
@@ -879,7 +972,8 @@ export function advanceMonth(state: GameState): GameState {
   const cashForStock = stockPurchases - billed
 
   const cashBeforeBills =
-    state.cash + cashSales + settlement.collected - (payrollBefore + overhead + interest + cashForStock + spoilage) + pipeline.cash
+    state.cash + cashSales + settlement.collected -
+    (payrollBefore + overhead + interest + cashForStock + spoilage + returns) + pipeline.cash
   const billSettlement = settleBills(state.bills ?? [], month, Math.max(0, cashBeforeBills))
   const newBills: Bill[] = billed > 0
     ? [{
@@ -964,6 +1058,9 @@ export function advanceMonth(state: GameState): GameState {
     team,
     candidates: makeCandidatePool(rngFor(state.seed ?? 0, 'candidates', month)),
     pipeline: pipeline.pipeline,
+    leads,
+    contracts,
+    orders,
     invoices,
     receivables,
     bills,
@@ -990,6 +1087,9 @@ export function advanceMonth(state: GameState): GameState {
   }
 
   let headline = `${customers >= state.customers ? '+' : ''}${number(customers - state.customers)} net ${industry.customerNounPlural} this month.`
+  if (quoteOutcome.contracts.length > 0) {
+    headline = `${quoteOutcome.contracts.length} retainer${quoteOutcome.contracts.length === 1 ? '' : 's'} signed — ${money(contractRevenue)} recurring booked.`
+  }
   if (pipeline.won > 0) {
     headline = `${number(pipeline.won)} deal${pipeline.won === 1 ? '' : 's'} closed. ${customers >= state.customers ? '+' : ''}${number(customers - state.customers)} net ${industry.customerNounPlural}.`
   }
@@ -1052,7 +1152,7 @@ export function advanceMonth(state: GameState): GameState {
     borrow: (next.flows?.borrow ?? 0) + emergencyBorrow,
     repay: next.flows?.repay ?? 0,
     billsPaid: next.flows?.billsPaid ?? 0,
-    expenses: next.flows?.expenses ?? 0,
+    expenses: (next.flows?.expenses ?? 0) + returns,
     otherIncome: (next.flows?.otherIncome ?? 0) + pipeline.cash,
   }
   const emergencyFee = Math.round(emergencyBorrow * 0.12)
@@ -1139,6 +1239,18 @@ export function advanceMonth(state: GameState): GameState {
     drivers.push(`${number(settlement.overdue)} invoice${settlement.overdue === 1 ? '' : 's'} missed the due date — late payers recover about 80% next month.`)
   }
   if (pipeline.notes.length) drivers.push(...pipeline.notes.slice(0, 2))
+  if (quoteOutcome.notes.length) drivers.push(...quoteOutcome.notes.slice(0, 2))
+  if (contractRevenue > 0) {
+    drivers.push(
+      `${money(contractRevenue)} of revenue came from ${contractTick.active} live retainer${contractTick.active === 1 ? '' : 's'} — collected in the month, not invoiced.`,
+    )
+  }
+  if (newLeads.length) {
+    drivers.push(`${number(newLeads.length)} new account${newLeads.length === 1 ? '' : 's'} entered the funnel.`)
+  }
+  if (contractTick.ended.length) {
+    drivers.push(`Retainer${contractTick.ended.length === 1 ? '' : 's'} ended: ${contractTick.ended.slice(0, 2).join(', ')}. Renew or replace the revenue.`)
+  }
   if (branchDemand > 0) drivers.push(`Branches added ${number(branchDemand)} demand points.`)
   if (trainingBudget > 0) drivers.push(`Training spend of ${money(trainingBudget)} lifted team capability.`)
   if (promoted) drivers.push('A teammate earned a promotion and a raise.')
@@ -1252,6 +1364,15 @@ export function advanceMonth(state: GameState): GameState {
     channels,
     cac: economics.cac,
     ltv: economics.ltv,
+    contractRevenue,
+    leadsAdded: newLeads.length,
+    contractsWon: quoteOutcome.contracts.length,
+    contractsActive: contractTick.active,
+    capacity,
+    unserved: capacityNow.unserved,
+    returns,
+    ordersInTransit: openOrders(orders).length,
+    lateDeliveries: orderTick.lateOrders,
   }
 
   next = { ...next, lastReport: report }
@@ -1607,6 +1728,185 @@ export function payAllBills(state: GameState): GameState {
   })
 }
 
+/**
+ * Qualify an account: pay for references and a discovery call, and the quote
+ * that follows carries a little more weight (`quoteChance` adds 0.06).
+ */
+export function qualifyLead(state: GameState, leadId: string): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || lead.status !== 'open') return state
+  if (state.cash < QUALIFICATION_FEE) return state
+  const next: GameState = {
+    ...state,
+    cash: state.cash - QUALIFICATION_FEE,
+    flows: recordFlow(state, 'expenses', QUALIFICATION_FEE),
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId ? { ...item, status: 'qualified' as const, note: 'Qualified — discovery call done, budget confirmed.' } : item,
+    ),
+  }
+  return addLog(next, {
+    month: state.month,
+    title: `${lead.company} qualified`,
+    detail: `${money(QUALIFICATION_FEE)} spent on references and a discovery call. The quote is stronger for it.`,
+    tone: 'neutral',
+    kind: 'market',
+  })
+}
+
+/**
+ * Send a quote: the monthly retainer is the current list price times the seats
+ * the account would take, less the discount the player chose to offer.
+ */
+export function sendQuote(state: GameState, leadId: string, discount = 0): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || (lead.status !== 'open' && lead.status !== 'qualified')) return state
+  const scored = scoreLead(lead, state.price)
+  const value = quoteValue(lead, state.price, discount)
+  const chance = quoteChance({
+    score: scored.score,
+    value,
+    budget: lead.budget,
+    discount: clamp(discount, 0, 0.3),
+    qualified: lead.status === 'qualified',
+    price: state.price,
+  })
+  const next: GameState = {
+    ...state,
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId
+        ? {
+            ...item,
+            status: 'quoted' as const,
+            quote: {
+              value,
+              discount: clamp(discount, 0, 0.3),
+              sentMonth: state.month,
+              expiresMonth: state.month + QUOTE_VALID_MONTHS,
+              chance,
+            },
+            note: `Quote sent: ${money(value)}/month, ${Math.round(chance * 100)}% modelled chance.`,
+          }
+        : item,
+    ),
+  }
+  return addLog(next, {
+    month: state.month,
+    title: `Quote sent to ${lead.company}`,
+    detail: `${money(value)} per month for ${number(lead.seats)} seats${discount > 0 ? `, ${Math.round(discount * 100)}% discount` : ''}. Answer expected by month ${state.month + QUOTE_VALID_MONTHS}.`,
+    tone: 'neutral',
+    kind: 'market',
+  })
+}
+
+/**
+ * Place a manual purchase order for extra stock cover. It arrives after the
+ * supplier's lead time — or a month later if they are unreliable.
+ */
+export function placeOrder(state: GameState, cover: number): GameState {
+  const industry = industryById(state.industry)
+  if (!industry.inventory) return state
+  const months = clamp(Number.isFinite(cover) ? cover : 0, 0.5, MAX_ORDER_COVER)
+  if (openOrders(state.orders ?? []).length >= MAX_ORDERS) return state
+  const supplier = supplierOf(state)
+  const count = (state.orders ?? []).filter((order) => order.orderedMonth === state.month).length
+  const slipRng = rngFor(state.seed ?? 0, 'manual-slip', state.month * 10 + count)
+  const order = makeOrder({
+    id: `po-${state.month}-manual-${count + 1}`,
+    supplierId: supplier?.id ?? 'unknown',
+    cover: months,
+    month: state.month,
+    leadMonths: supplier?.leadMonths ?? 1,
+    slip: slipRng() < slipChance(supplier?.reliability ?? 0.85),
+    note: 'Manual order',
+  })
+  return addLog(
+    { ...state, orders: [...(state.orders ?? []), order] },
+    {
+      month: state.month,
+      title: `Order placed: ${months.toFixed(1)} months of cover`,
+      detail: `Promised for month ${order.promisedMonth}${order.expectedMonth > order.promisedMonth ? ', flagged as at risk of slipping' : ''}.`,
+      tone: 'neutral',
+      kind: 'market',
+    },
+  )
+}
+
+/** Pay a premium to pull a delivery forward one month. */
+export function expediteOrder(state: GameState, orderId: string): GameState {
+  const order = (state.orders ?? []).find((item) => item.id === orderId)
+  if (!order || order.status !== 'in_transit') return state
+  if (order.expectedMonth <= state.month + 1) return state
+  const industry = industryById(state.industry)
+  const monthlyStockCost = Math.max(1, state.customers * industry.costPerCustomer)
+  const cost = expediteCost(order, monthlyStockCost)
+  if (state.cash < cost) return state
+  return addLog(
+    {
+      ...state,
+      cash: state.cash - cost,
+      orders: expeditePurchaseOrder(state.orders ?? [], orderId, state.month),
+      flows: recordFlow(state, 'expenses', cost),
+    },
+    {
+      month: state.month,
+      title: 'Delivery expedited',
+      detail: `${money(cost)} premium to land the order a month earlier.`,
+      tone: 'neutral',
+      kind: 'finance',
+    },
+  )
+}
+
+/** Cancel an order that has not arrived yet. Pay-on-delivery means no refund. */
+export function cancelOrder(state: GameState, orderId: string): GameState {
+  const order = (state.orders ?? []).find((item) => item.id === orderId)
+  if (!order || order.status !== 'in_transit') return state
+  return addLog(
+    { ...state, orders: cancelPurchaseOrder(state.orders ?? [], orderId) },
+    {
+      month: state.month,
+      title: 'Order cancelled',
+      detail: `${order.cover.toFixed(1)} months of cover will not arrive.`,
+      tone: 'neutral',
+      kind: 'market',
+    },
+  )
+}
+
+/** Buy fulfilment capacity: equipment and systems, capitalised and depreciated. */
+export function investCapacity(state: GameState, amount: number): GameState {
+  const spend = Math.round(Number.isFinite(amount) ? amount : 0)
+  if (spend < 5_000) return state
+  if (state.cash < spend) return state
+  return addLog(
+    {
+      ...state,
+      cash: state.cash - spend,
+      fixedAssets: (state.fixedAssets ?? 0) + spend,
+      flows: recordFlow(state, 'capex', spend),
+    },
+    {
+      month: state.month,
+      title: 'Capacity investment',
+      detail: `${money(spend)} of equipment and systems. More customers can be served each month, and it depreciates like any asset.`,
+      tone: 'good',
+      kind: 'milestone',
+    },
+  )
+}
+
+/** Walk away from an account. Costs nothing but the opportunity. */
+export function dropLead(state: GameState, leadId: string): GameState {
+  const lead = (state.leads ?? []).find((item) => item.id === leadId)
+  if (!lead || lead.status === 'won' || lead.status === 'lost') return state
+  return {
+    ...state,
+    leads: (state.leads ?? []).map((item) =>
+      item.id === leadId ? { ...item, status: 'lost' as const, note: 'Dropped — not a fit for this offer.' } : item,
+    ),
+  }
+}
+
 export function openBranch(state: GameState, branchId: string): GameState {
   const branch = state.branches?.find((item) => item.id === branchId)
   if (!branch || branch.openedMonth !== null) return state
@@ -1770,6 +2070,9 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
     restockMonths: game.restockMonths ?? (industry.inventory ? 1 : 0),
     pipeline: game.pipeline ?? [],
     pipelineWon: game.pipelineWon ?? 0,
+    leads: game.leads ?? [],
+    contracts: game.contracts ?? [],
+    orders: game.orders ?? [],
     competitors: game.competitors?.length ? game.competitors : makeCompetitors(game.industry),
     economy: game.economy ?? economyForMonth(game.month ?? 0, economyOffset),
     economyOffset,
@@ -1787,6 +2090,15 @@ export function normalizeGame(raw: Partial<GameState>): GameState {
           stockout: game.lastReport.stockout ?? false,
           dealsWon: game.lastReport.dealsWon ?? 0,
           branchDemand: game.lastReport.branchDemand ?? 0,
+          contractRevenue: game.lastReport.contractRevenue ?? 0,
+          leadsAdded: game.lastReport.leadsAdded ?? 0,
+          contractsWon: game.lastReport.contractsWon ?? 0,
+          contractsActive: game.lastReport.contractsActive ?? 0,
+          capacity: game.lastReport.capacity ?? 0,
+          unserved: game.lastReport.unserved ?? 0,
+          returns: game.lastReport.returns ?? 0,
+          ordersInTransit: game.lastReport.ordersInTransit ?? 0,
+          lateDeliveries: game.lastReport.lateDeliveries ?? 0,
         }
       : null,
   }

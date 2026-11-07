@@ -90,7 +90,19 @@ for (const industry of ['saas', 'retail', 'logistics', 'fnb'] as const) {
   check(`${industry}: P&L lines recompute`, worstProfitGap <= 2, `worst ${worstProfitGap}`)
 
   const last = statements[statements.length - 1]
-  check(`${industry}: cash on the balance sheet is the engine's cash`, Math.abs((last?.balance.cash ?? 0) - Math.round(game.cash)) <= 2, `${last?.balance.cash} vs ${game.cash}`)
+  // Cash movements that happen *after* the close (micro-events inside the
+  // close, and crises answered between closes) are memoed in `flows` and land in
+  // the next statement. The sheet must equal the engine's cash less exactly
+  // those movements — otherwise a real leak hides behind the tie-out check.
+  const memoed = (game.flows ?? { capex: 0, funding: 0, borrow: 0, repay: 0, billsPaid: 0, expenses: 0, otherIncome: 0 })
+  const expectedCash =
+    Math.round(game.cash) - memoed.otherIncome - memoed.funding - memoed.borrow + memoed.capex + memoed.repay +
+    memoed.billsPaid + memoed.expenses
+  check(
+    `${industry}: balance-sheet cash reconciles to engine cash less between-close movements`,
+    Math.abs((last?.balance.cash ?? 0) - expectedCash) <= 2,
+    `${last?.balance.cash} vs ${expectedCash} (memoed ${JSON.stringify(memoed)})`,
+  )
   check(`${industry}: retained earnings accumulate`, Math.abs((last?.balance.retainedEarnings ?? 0) - Math.round(game.retainedEarnings)) <= 2, `${last?.balance.retainedEarnings} vs ${game.retainedEarnings}`)
 }
 

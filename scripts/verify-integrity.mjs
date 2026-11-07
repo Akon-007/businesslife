@@ -62,6 +62,38 @@ async function main() {
   const companyId = created.body?.id
   check('company created', created.status === 201 && Boolean(companyId), `status ${created.status}`)
 
+  const funnelDecision = await call(`/api/companies/${companyId}/sales/funnel`, {
+    method: 'POST',
+    token: learner.token,
+    body: { leadId: 'lead-audit-1', action: 'quote', value: 4800000, discount: 0.1 },
+  })
+  check('a funnel decision is recorded on the company', funnelDecision.status === 200, `status ${funnelDecision.status}`)
+  const funnelMissingId = await call(`/api/companies/${companyId}/sales/funnel`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'quote' },
+  })
+  check('a funnel decision without a lead id is rejected', funnelMissingId.status === 400, `status ${funnelMissingId.status}`)
+
+  const orderDecision = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'place', cover: 1.5 },
+  })
+  check('a purchase order decision is recorded', orderDecision.status === 200, `status ${orderDecision.status}`)
+  const badOrderAction = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'teleport' },
+  })
+  check('an unknown operations action is rejected', badOrderAction.status === 400, `status ${badOrderAction.status}`)
+  const expediteWithoutId = await call(`/api/companies/${companyId}/operations/orders`, {
+    method: 'POST',
+    token: learner.token,
+    body: { action: 'expedite' },
+  })
+  check('expediting without an order id is rejected', expediteWithoutId.status === 400, `status ${expediteWithoutId.status}`)
+
   const initialRun = await call(`/api/companies/${companyId}/run`, { token: learner.token })
   check('run state readable', initialRun.status === 200)
   check('initial score is server-derived zero', initialRun.body?.score === 0, String(initialRun.body?.score))
@@ -185,23 +217,38 @@ async function main() {
 
   console.log('\nCompetency rubric')
   const rubricSpec = await call('/api/rubric')
-  check('rubric definition is published', rubricSpec.status === 200 && (rubricSpec.body?.criteria ?? []).length === 4, `${(rubricSpec.body?.criteria ?? []).length} criteria`)
-  const shortRationale = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 3, customers: 3, operations: 3, judgement: 3 }, rationale: 'Fine.' } })
+  check('the six-competency rubric is published', rubricSpec.status === 200 && (rubricSpec.body?.criteria ?? []).length === 6, `${(rubricSpec.body?.criteria ?? []).length} criteria`)
+  check(
+    'the rubric weights are 25/20/15/15/15/10',
+    (rubricSpec.body?.criteria ?? []).map((item) => item.weight).join('/') === '25/20/15/15/15/10',
+    JSON.stringify((rubricSpec.body?.criteria ?? []).map((item) => item.weight)),
+  )
+  const SIX = { finance: 3, strategy: 3, operations: 3, market: 3, leadership: 3, integrity: 3 }
+  const shortRationale = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: SIX, rationale: 'Fine.' } })
   check('rubric grade without a real rationale is rejected', shortRationale.status === 400, `status ${shortRationale.status}`)
-  const partialRubric = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 4 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
+  const partialRubric = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { finance: 4 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
   check('incomplete rubric is rejected', partialRubric.status === 400, `status ${partialRubric.status}`)
-  const outOfRange = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 5, customers: 3, operations: 3, judgement: 3 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
+  const outOfRange = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { ...SIX, finance: 5 }, rationale: 'Complete rubric with a proper written justification of the decisions.' } })
   check('rubric levels outside 1-4 are rejected', outOfRange.status === 400, `status ${outOfRange.status}`)
 
   const rationale = 'Held receivables under control, collected on time and explained every price change in the report.'
-  const proficient = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 3, customers: 3, operations: 3, judgement: 3 }, rationale } })
+  const proficient = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: SIX, rationale } })
   check('complete rubric produces a grade', proficient.status === 200 && proficient.body?.grade === 75, `grade ${proficient.body?.grade}`)
-  check('rubric breakdown is returned', (proficient.body?.breakdown ?? []).length === 4)
-  const exemplary = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 4, customers: 3, operations: 3, judgement: 2 }, rationale } })
+  check('rubric breakdown is returned for all six competencies', (proficient.body?.breakdown ?? []).length === 6)
+  const legacy = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { cash: 4, customers: 4, operations: 4, judgement: 4 }, rationale } })
+  // Legacy cash/customers/operations/judgement map to finance/market/operations/strategy;
+  // leadership and integrity default to Proficient, so four Exemplarys score 94.
+  check(
+    'a legacy four-criterion rubric is still accepted and mapped',
+    legacy.status === 200 && legacy.body?.grade === 94 && (legacy.body?.breakdown ?? []).length === 6,
+    `grade ${legacy.body?.grade} status ${legacy.status}`,
+  )
+  // 100x25 + 75x20 + 75x15 + 50x15 + 75x15 + 75x10 = 77.5 -> 78
+  const exemplary = await call(`/api/classes/${classId}/grade`, { method: 'POST', token: instructor.token, body: { studentId: learner.player.id, rubric: { finance: 4, strategy: 3, operations: 3, market: 2, leadership: 3, integrity: 3 }, rationale } })
   check('weighted rubric weights the criteria', exemplary.body?.grade === 78, `grade ${exemplary.body?.grade}`)
   const gradedRoster = await call(`/api/classes/${classId}/roster`, { token: instructor.token })
   const graded = gradedRoster.body?.roster?.[0]
-  check('roster stores the rubric', graded?.rubric?.cash === 4 && graded?.rubric?.judgement === 2, JSON.stringify(graded?.rubric))
+  check('roster stores the rubric', graded?.rubric?.finance === 4 && graded?.rubric?.market === 2, JSON.stringify(graded?.rubric))
   check('roster stores the rationale', graded?.rationale === rationale)
   check('roster records the engine score at grading time', typeof graded?.engineScoreAtGrade === 'number')
   const rubricAudit = await call(`/api/companies/${companyId}/audit`, { token: learner.token })
@@ -209,7 +256,11 @@ async function main() {
   check('grade is written to the audit chain', Boolean(gradeRecord))
   const rubricCsv = await call(`/api/classes/${classId}/export.csv`, { token: instructor.token, raw: true })
   const rubricHeader = rubricCsv.text.trim().split('\n')[0]?.split(',') ?? []
-  check('CSV exports rubric columns', ['rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'grade_minus_engine'].every((column) => rubricHeader.includes(column)), rubricHeader.join('|'))
+  check(
+    'CSV exports all six rubric columns',
+    ['rubric_finance', 'rubric_strategy', 'rubric_operations', 'rubric_market', 'rubric_leadership', 'rubric_integrity', 'rationale', 'grade_minus_engine'].every((column) => rubricHeader.includes(column)),
+    rubricHeader.join('|'),
+  )
   const rubricRow = rubricCsv.text.trim().split('\n')[1] ?? ''
   check('CSV carries the rationale text', rubricRow.includes('Held receivables under control'), rubricRow.slice(0, 120))
 

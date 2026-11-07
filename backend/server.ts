@@ -594,7 +594,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
     }
     error(response, 404, 'AI endpoint not found.'); return
   }
-  const specialCompany = path.match(/^\/api\/companies\/([^/]+)\/(time\/advance|popups|notifications|forecast|evaluate-action|operations\/overview|products|suppliers|procurement|marketing\/campaigns|finance\/loan|finance\/repay|budget|supplier-selection|sales\/pipeline|branches|npcs|npcs\/interview|npcs\/evaluate-investor|npcs\/select-supplier|npcs\/recruit)$/)
+  const specialCompany = path.match(/^\/api\/companies\/([^/]+)\/(time\/advance|popups|notifications|forecast|evaluate-action|operations\/overview|products|suppliers|procurement|marketing\/campaigns|finance\/loan|finance\/repay|budget|supplier-selection|sales\/pipeline|sales\/funnel|operations\/orders|branches|npcs|npcs\/interview|npcs\/evaluate-investor|npcs\/select-supplier|npcs\/recruit)$/)
   if (specialCompany) {
     const company = ownedCompany(database, player, specialCompany[1]); if (!company) { error(response, 404, 'Company not found.'); return }
     ensureCommunications(company)
@@ -627,6 +627,19 @@ async function handle(request: IncomingMessage, response: ServerResponse, databa
       const input = await body(request); company.events.unshift({ id: newId('evt'), type: 'supplier_selected', createdAt: now(), ...input });
     } else if (request.method === 'POST' && action === 'sales/pipeline') {
       const input = await body(request); company.events.unshift({ id: newId('evt'), type: 'pipeline_updated', createdAt: now(), ...input });
+    } else if (request.method === 'POST' && action === 'operations/orders') {
+      // Purchase orders, expedites and capacity capex run in the engine and are
+      // re-executed from the journal on commit; this records the decision.
+      const input = await body(request); const orderAction = String(input.action ?? '');
+      if (!['place', 'expedite', 'cancel', 'invest'].includes(orderAction)) { error(response, 400, 'Unknown operations action.'); return }
+      if ((orderAction === 'expedite' || orderAction === 'cancel') && !input.orderId) { error(response, 400, 'An order id is required.'); return }
+      company.events.unshift({ id: newId('evt'), type: 'purchase_order_updated', createdAt: now(), orderAction, orderId: input.orderId ? String(input.orderId).slice(0, 80) : null, cover: Number(input.cover ?? 0), amountKobo: Math.round(Number(input.amount ?? 0) * 100) });
+    } else if (request.method === 'POST' && action === 'sales/funnel') {
+      // The funnel runs in the engine (see src/game/sales.ts) and is re-executed
+      // from the journal on commit; this records the decision on the company.
+      const input = await body(request); const leadId = String(input.leadId ?? '').slice(0, 80);
+      if (!leadId) { error(response, 400, 'A lead id is required.'); return }
+      company.events.unshift({ id: newId('evt'), type: 'funnel_updated', createdAt: now(), leadId, funnelAction: String(input.action ?? 'update').slice(0, 40), value: Math.round(Number(input.value ?? 0)), discount: Number(input.discount ?? 0) });
     } else if (request.method === 'POST' && action === 'branches') {
       const input = await body(request); company.events.unshift({ id: newId('evt'), type: 'branch_opened', createdAt: now(), ...input });
     } else if (request.method === 'POST' && action === 'npcs/interview') {

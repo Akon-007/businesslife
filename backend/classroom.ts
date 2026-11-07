@@ -125,7 +125,7 @@ export function csvEscape(value: unknown): string {
 }
 
 export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string {
-  const header = ['cohort', 'scenario', 'scenario_seed', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'grade_minus_engine', 'rubric_cash', 'rubric_customers', 'rubric_operations', 'rubric_judgement', 'rationale', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'replay', 'seed_match', 'feedback', 'last_commit']
+  const header = ['cohort', 'scenario', 'scenario_seed', 'student_id', 'student', 'email', 'company', 'month', 'engine_score', 'instructor_grade', 'grade_minus_engine', 'rubric_finance', 'rubric_strategy', 'rubric_operations', 'rubric_market', 'rubric_leadership', 'rubric_integrity', 'rationale', 'cash_ngn', 'revenue_ngn', 'status', 'commits', 'integrity', 'replay', 'seed_match', 'feedback', 'last_commit']
   const scenario = classroom.scenario ? String((classroom.scenario as { title?: string }).title ?? 'custom') : 'none'
   const scenarioSeed = classroom.scenario ? String((classroom.scenario as { seed?: number }).seed ?? '') : ''
   const rows = entries.map((entry) => [
@@ -140,10 +140,12 @@ export function rosterCsv(classroom: ClassRoom, entries: RosterEntry[]): string 
     entry.score,
     entry.grade ?? '',
     entry.grade === null || entry.engineScoreAtGrade === null ? '' : entry.grade - entry.engineScoreAtGrade,
-    entry.rubric?.cash ?? '',
-    entry.rubric?.customers ?? '',
+    entry.rubric?.finance ?? '',
+    entry.rubric?.strategy ?? '',
     entry.rubric?.operations ?? '',
-    entry.rubric?.judgement ?? '',
+    entry.rubric?.market ?? '',
+    entry.rubric?.leadership ?? '',
+    entry.rubric?.integrity ?? '',
     entry.rationale ?? '',
     entry.cash,
     entry.revenue,

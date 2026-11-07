@@ -21,8 +21,14 @@ Last verified against the running suite: 23 client calls all resolve, 13 server 
 | Generic company actions (supplier, branch, pipeline, mission evidence…) | `syncCompanyAction` | `POST /api/companies/:id/:action` | `verify:api` |
 | Nova advice | `askAdvisor` (Nova panel) | `POST /api/companies/:id/ai/advice` | `verify:api` (AI guardrails) |
 | **Character dialogue** | `CharacterDialogue` → `fetchCharacters` + `talkToCharacter` | `GET /api/companies/:id/ai/characters`, `POST …/ai/dialogue` | render test + `verify:api` |
-| Rubric | `fetchRubric` | `GET /api/rubric` | `verify:api` |
+| Rubric (six competencies) | `fetchRubric` (instructor grading) | `GET /api/rubric`; grades post to `POST /api/classes/:id/grade` | `verify:api`, `verify:pdf` |
+| **Operations: purchase orders, expedite, capacity capex** | `OperationsPanel` → `placeOrder` / `expediteOrder` / `cancelOrder` / `investCapacity` (journaled) + `syncCompanyAction('operations/orders')` | `POST /api/companies/:id/operations/orders`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
+| **Sales funnel** | `SalesFunnel` → `qualifyLead` / `sendQuote` / `dropLead` (journaled) + `syncCompanyAction('sales/funnel')` | `POST /api/companies/:id/sales/funnel`, and the decisions ride in `PUT /run` | `verify:centres`, `verify:api` |
 | Instructor cohorts | `listCohorts`, `createCohort`, `inviteStudents`, `setScenario`, `fetchRoster`, `gradeStudent`, `resetStudent`, `exportRoster` | `GET/POST /api/classes`, `POST /api/classes/:id/{invite,scenario,grade,reset}`, `GET /api/classes/:id/roster`, `GET …/export.csv` | `verify:api`, `verify:auth` |
+
+**Payment runs, the marketing mix and the funnel decisions are journal ops**, carried inside the
+`PUT /companies/:id/run` commit where the server re-executes them; `sales/funnel` additionally records the
+decision on the company so an instructor can see it without replaying.
 
 **Payment runs and the marketing mix need no new routes.** They are player decisions, so they travel as
 journal ops (`payBill`, `payAllBills`, `setMarketingChannel`, `setMarketingMix`) inside the `PUT /run`
@@ -40,6 +46,12 @@ mutation would be invisible to replay and unverifiable.
 | `GET /api/marketplace`, `/api/marketplace/businesses/:id`, `POST /api/marketplace/{enquiries,follow,message}`, `POST /api/marketplace/quotations/:id/accept` | Marketplace: browse, enquire, quote, order, message | Whole B2B marketplace is unbuilt in the UI (audit §3 item 6/16) |
 | `GET/POST /api/admin/{config,city,activity,events}` | Platform admin | No admin console |
 | `GET /api/health` | Liveness | Used by CI and uptime monitors, not the browser |
+
+### Client-only by design
+
+| Feature | Why there is no route |
+|---|---|
+| PDF month report and run scorecard (`src/lib/pdf.ts`, `src/game/report-pdf.ts`) | Rendered from state the browser already holds, so an offline run still exports. The one server-derived number on the scorecard — the authority score — is already fetched from `GET /api/companies/:id/run` and printed alongside the engine score |
 
 ## Known integration gaps (tracked, not hidden)
 

@@ -509,3 +509,138 @@ the honest gaps: the marketplace, admin console, `forecast`, `operations/overvie
 `npcs` surfaces are server-side only.
 
 Verification: `verify:wiring` (23 client calls, 0 unwired) · render test now covers the dialogue panel.
+
+
+### 9.14 The sales funnel — **implemented**
+
+§6.4 was a three-stage pipeline with a discount toggle and no notion of qualification, quoting or contracted
+revenue. The funnel is now a real object with four steps, and the arithmetic that decides each step lives in
+one module (`src/game/sales.ts`) so the panel, the engine and the tests cannot disagree.
+
+| Step | Rule | Where |
+|---|---|---|
+| Capture | Four sources roll independently each close: inbound scales with marketing spend, referrals with reputation and live retainers, outbound with sales headcount, events at a flat 8% | `arriveLeads` |
+| Qualification | Costs ₦1,200 (memoed to the cash-flow statement) and buys +0.06 on the quote | `qualifyLead` |
+| Score | 45% intent + 40% fit + 15% can-they-afford-it, banded hot/warm/cold at 70/45 | `scoreLead` |
+| Quote | Seats × list price × (1 − discount), valid 2 months; chance = 0.10 + 0.52·score + 0.9·discount − 0.33·over-budget | `quoteValue`, `quoteChance` |
+| Contract | Won quotes become retainers of 6, 9 or 12 months by value, billed monthly until the term ends | `contractTerm`, `tickContracts` |
+
+**Why contracts do not enter `state.customers`:** they are B2B accounts on retainer, not consumers in the
+demand model. Adding them would count their revenue twice (`customers × price` *and* the retainer) and make
+them churn like consumers, which they do not. They are collected in-month, so they never touch receivables.
+
+The ledger stays honest: retainer revenue is added to both `revenue` and `cashSales` and appears in the P&L;
+the qualification fee posts to `flows.expenses`. `verify:statements` confirms the balance sheet still ties at
+0 across all four industries, months in which a retainer pays included.
+
+Decision ops `qualifyLead`, `sendQuote`, `dropLead` are journaled and replay identically; the close resolves
+quotes from a seeded RNG (`rngFor(seed, 'funnel', month)`) so a replayed run signs the same retainers.
+
+Server: `POST /api/companies/:id/sales/funnel` records the decision on the company (400 without a lead id),
+and the run itself is re-executed server-side from the journal like every other decision.
+
+UI: `src/components/game/SalesFunnel.tsx` in the Sales panel — score bars, over-budget warnings, discount
+choice, quote odds, live-retainer terms with expiry bars, and the recently closed list.
+
+Verification: `verify:centres` +31 funnel checks (`scoreLead`, `quoteChance`, quote maths, qualify/quote/drop,
+retainer payout and expiry, report and statement integration, journal replay), `verify:render` +4 per
+industry, `verify:api` +2 live endpoint checks.
+
+
+### 9.15 Operations: purchase orders, lead times, capacity and returns — **implemented**
+
+§6.2 and §6.9 were inventory cover, a restock slider and a supplier picker. Stock appeared from an invisible
+formula (`incoming = restockMonths × reliability`) and nothing limited how many customers the business could
+physically serve. `src/game/supply.ts` replaces that with three real constraints.
+
+| Constraint | Rule |
+|---|---|
+| Purchase orders | Stock now arrives from an order. Each close delivers what is due, then places the policy order; a manual order can be placed for 0.5–4 months of cover (8 in flight max) |
+| Lead times | Arrival = ordered month + supplier lead time + 1. Suppliers slip a month with probability `1 − reliability` (capped 35%); a slip is shown as "at risk" before it costs a stockout |
+| Expedite | Pay a 12% premium to pull a delivery one month forward (memoed to `flows.expenses`) |
+| Capacity | 220 + 30/teammate + ₦1 per ₦20k of fixed assets + 40/branch customer slots per month. Demand above capacity is unserved: that share of revenue is lost and the overflow churns 15% faster |
+| Returns | Defect rate = 1.2% + `max(0, 3 − supplier quality) × 0.8pp` + 2pp per unit of overload + reliability penalty − quality credit, capped at 14%. Refunds are cash out, booked as an operating expense |
+| Capacity investment | Capex of ₦20k per slot, capitalised to fixed assets and depreciated like any other asset |
+
+**Balancing (measured, not guessed).** A first cut (base 34 slots, 10 per head) put every run ~100 slots
+short from month 1: revenue fell to a fifth and net profit to −₦10k/month. The constraint now starts above the
+opening customer base and only bites as demand grows — a passive 12-month run keeps its previous economics
+(net ≈ +₦1k/month, revenue ≈ ₦16k), while a growth run hits the wall and has to hire, branch or buy slots.
+Returns were similarly mis-scaled: reading supplier quality (−5…+5) directly as percentage points produced
+10% refunds on every cheap supplier; it is now a nudge (1–5 points), 1–2% of revenue in normal play.
+
+**Two real defects found while verifying:**
+
+1. **The legit-play suite never actually replayed.** It called `advanceMonth` directly, so no `advanceDay`
+   ops were journaled; the server's replay guard (`journal.length`) skipped replay entirely and fell back to
+   scoring rounded canonical values. That fallback disagreed with the client by ±1 point on some seeds —
+   which is what surfaced the problem. The suite now plays the way the store plays (one `advanceDay` op per
+   day, `resolveCrisis` ops), and asserts the server returned `replay: { status: 'match', ops: 182 }`.
+   Engine-to-engine parity is now exact across runs.
+2. **The statements suite compared cash after post-close events.** Micro-events run after the statements are
+   built and crises are answered between closes; both move cash and are memoed in `flows` for the next
+   statement. The old assertion happened to pass because no such event had ever hit the final month. It is
+   now a reconciliation: balance-sheet cash = engine cash − memoed between-close movements, which is stricter
+   and caught the refund flow on its first run.
+
+**Wiring.** `placeOrder`, `expediteOrder`, `cancelOrder` and `investCapacity` are journaled decisions
+(`orderId`/`cover` validated, cover capped at 4) and re-executed by `PUT /run`. `POST
+/api/companies/:id/operations/orders` records the decision live: 400 on an unknown action and on an expedite
+without an order id (both covered by `verify:api`).
+
+**Verification.** `verify:centres` +42 operations checks (order promises, slips, delivery, lateness, expedite,
+cancellation, capacity maths, defect scaling, the close-level consequences of overload, capex accounting,
+journal replay, op validation) · `verify:render` +4 per industry (operations panel, overload copy, no leaked
+values) · `verify:api` +3 live checks · statements, determinism, replay and legit-play all green.
+
+
+### 9.16 Six-competency rubric and PDF exports — **implemented**
+
+**Rubric (§11.2).** Grading used four criteria at 30/30/20/20; the scope specifies six competencies weighted
+25 / 20 / 15 / 15 / 15 / 10. The rubric is now:
+
+| Competency | Weight | What it asks |
+|---|---|---|
+| Financial acumen | 25 | Protected cash, collected receivables, kept margins, funded growth deliberately |
+| Strategy & priorities | 20 | A coherent position: price, product and customers pulling one way |
+| Operational execution | 15 | Supply, capacity and quality held together under growth |
+| Market & customer | 15 | Demand created and retained — funnel, pricing, churn |
+| Leadership & team | 15 | Hired deliberately, kept morale, survived crises |
+| Ethics & governance | 10 | Honest claims, defensible trade-offs, fair treatment |
+
+Levels stay 1–4 (25/50/75/100 points), the grade is the weighted mean, and a written rationale of ≥40
+characters is still required. Two compatibility decisions: **legacy four-criterion grades are still accepted**
+(cash→finance, customers→market, operations→operations, judgement→strategy; leadership and integrity default
+to Proficient, so four Exemplarys score 94) and the **CSV export carries the six new columns**. The client
+mirror in `src/game/rubric.ts` is now checked against `backend/rubric.ts` by `verify:pdf`, so the two lists
+cannot drift.
+
+`suggestRubric(state)` produces a starting position from the run's own evidence (margin, runway, capacity,
+retention, morale, balance-sheet integrity) with a one-line justification per competency. It is labelled as a
+suggestion on the scorecard — the instructor's score replaces it.
+
+**Exports (§11.3).** `src/lib/pdf.ts` is a ~230-line PDF writer (catalog, page tree, Helvetica, real xref
+offsets, Latin-1 with transliteration for ₦ → "NGN" and · → "-"). Pulling a PDF library in for two documents
+would have added a dependency and a bundle for arithmetic; the output is verified by parsing it with `pypdf`
+during development and by structural checks in CI.
+
+Two documents:
+- **Month report** — revenue, cash, net profit, customers, margin, collections; P&L; cash and working capital;
+  operations (capacity, unserved demand, orders in transit, retainer revenue); marketing with CAC/LTV; the
+  month's drivers; the "education, not financial advice" line.
+- **Run scorecard** — engine score and grade, valuation, cash, the six competencies with weighted points and
+  the evidence behind each, reputation/quality/morale/debt, founder equity, the last published statements with
+  the balance check, and — when the page is generated after a server commit — the server authority score and
+  the difference from the engine score.
+
+Both are wired into the UI: **Download PDF** in the month report, **Scorecard PDF** on the run-end screen —
+the scorecard prints the server authority score from `game.authority` whenever the run has been committed.
+Export is client-side by design: the documents are rendered from state the browser already holds, so an
+offline run still exports. The server's contribution is the grade on the scorecard, which comes from
+`GET /api/companies/:id/run` (authority score) — the rubric definition itself comes from `GET /api/rubric`.
+
+**Verification.** New suite `verify:pdf` (32 checks): the file parses (`%PDF-1.4`, trailer, every xref offset
+pointing at its own object), the figures on the page are the figures in the run, no ₦ glyph leaks, escaping of
+`( ) \` is correct, filenames cannot escape the download directory, the client and server rubric lists match, and
+the six weights sum to 100 with the boundary grades (25/75/100). `verify:api` now asserts six criteria from
+`/api/rubric`, the 25/20/15/15/15/10 weights, a six-entry breakdown, legacy acceptance and the six CSV columns.

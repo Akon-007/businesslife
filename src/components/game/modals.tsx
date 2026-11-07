@@ -1,3 +1,5 @@
+import { exportFilename, monthReportPdf, scorecardPdf } from '../../game/report-pdf'
+import { downloadBytes } from '../../lib/download'
 import { useEffect } from 'react'
 import confetti from 'canvas-confetti'
 import {
@@ -8,6 +10,7 @@ import {
   Building2,
   Check,
   Compass,
+  Download,
   Handshake,
   Landmark,
   Lightbulb,
@@ -74,6 +77,7 @@ export function ReportModal({
 }) {
   const industry = industryById(game.industry)
   if (!report) return null
+  const download = () => downloadBytes(monthReportPdf(game, report), exportFilename(game.company, 'month', report.month))
 
   const previous = game.history.length > 1 ? game.history[game.history.length - 2] : null
   const qualityDelta = previous ? report.quality - previous.quality : 0
@@ -258,6 +262,13 @@ export function ReportModal({
               A crisis is waiting
             </span>
           )}
+          <button
+            onClick={download}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-ink-600 transition hover:border-ink-300 hover:text-ink"
+          >
+            <Download className="size-4" />
+            Download PDF
+          </button>
           <button
             onClick={onClose}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-ink px-6 text-sm font-semibold text-white transition hover:bg-ink-800"
@@ -488,6 +499,18 @@ export function RunEndModal({
           >
             <RotateCcw className="size-4" />
             Start a new company
+          </button>
+          <button
+            onClick={() =>
+              downloadBytes(
+                scorecardPdf(game, { authorityScore: game.authority?.score ?? null }),
+                exportFilename(game.company, 'scorecard'),
+              )
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 px-5 text-sm font-semibold text-white/75 transition hover:border-white/30 hover:text-white"
+          >
+            <Download className="size-4" />
+            Scorecard PDF
           </button>
           <button
             onClick={onShare}

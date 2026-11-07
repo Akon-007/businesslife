@@ -6,7 +6,16 @@
  *
  *   npx tsx scripts/verify-legit-play.ts
  */
-import { advanceMonth, authorityPayload, performanceScore, resolveCrisis, startGame } from '../src/game/engine'
+import { authorityPayload, performanceScore, startGame } from '../src/game/engine'
+import { applyOp } from '../src/game/ops'
+import type { GameOp, GameState } from '../src/game/types'
+
+/**
+ * Play the way the store plays: one `advanceDay` decision per day, a
+ * `resolveCrisis` decision when a crisis lands, and a journal that records both.
+ * Anything less is not a run the server can replay.
+ */
+const decide = (state: GameState, op: GameOp): GameState => ({ ...applyOp(state, op), journal: [...(state.journal ?? []), op] })
 
 const API = process.env.API ?? 'http://127.0.0.1:8788'
 
@@ -71,8 +80,38 @@ async function main() {
 
   console.log('\nLegitimate play (client engine → server authority)\n')
 
+  /**
+   * Exactly what `store.syncRun` sends: the projection, the seed and the
+   * decision journal. Without the journal the server can only score bounded
+   * canonical values, which are rounded — that path is checked separately below.
+   */
+  const clientPayload = (game: GameState) => ({
+    ...authorityPayload(game),
+    seed: game.seed,
+    replay: game.journalComplete === false
+      ? undefined
+      : {
+          profile: {
+            founder: game.founder,
+            firstName: game.firstName,
+            lastName: game.lastName,
+            nickname: game.nickname,
+            avatar: game.avatar,
+            accountEmail: game.accountEmail,
+            company: game.company,
+            industry: game.industry,
+            strategy: game.strategy,
+            founderBackground: game.founderBackground,
+            difficulty: game.difficulty,
+            startingCash: game.startingCash,
+            seed: game.seed,
+          },
+          journal: game.journal ?? [],
+        },
+  })
+
   const commit = async (label: string, expectMonth: number) => {
-    const response = await put(`/api/companies/${companyId}/run`, authorityPayload(game), token)
+    const response = await put(`/api/companies/${companyId}/run`, clientPayload(game), token)
     const body = response.body as {
       tampered?: boolean
       score?: number
@@ -80,6 +119,14 @@ async function main() {
       violations?: Array<{ code: string; field: string }>
     }
     const clientScore = performanceScore(game)
+    const replay = (body as { replay?: { status?: string; ops?: number } }).replay
+    if (expectMonth > 0) {
+      check(
+        `${label}: the server replayed the journal (${replay?.status ?? 'none'}, ${replay?.ops ?? 0} ops)`,
+        replay?.status === 'match' && (replay?.ops ?? 0) > 0,
+        JSON.stringify(replay),
+      )
+    }
     check(`${label}: accepted`, response.status === 200 && body.tampered === false, JSON.stringify(body.violations?.map((item) => item.code)))
     check(`${label}: score parity (client ${clientScore} vs server ${body.score})`, body.score === clientScore, String(body.score))
     check(`${label}: server month ${expectMonth}`, body.canonical?.month === expectMonth, String(body.canonical?.month))
@@ -87,10 +134,25 @@ async function main() {
 
   await commit('after create', 0)
   for (let month = 1; month <= 6; month += 1) {
-    game = advanceMonth(game)
-    while (game.pendingCrisis) game = resolveCrisis(game, game.pendingCrisis.options[0].id)
+    // Press "next day" until the month closes (30 days, guard against a stall).
+    for (let day = 0; day < 40 && game.month < month; day += 1) {
+      if (game.pendingCrisis) {
+        game = decide(game, { op: 'resolveCrisis', args: { optionId: game.pendingCrisis.options[0].id } })
+        continue
+      }
+      game = decide(game, { op: 'advanceDay' })
+    }
+    while (game.pendingCrisis) game = decide(game, { op: 'resolveCrisis', args: { optionId: game.pendingCrisis.options[0].id } })
     await commit(`month ${month}`, month)
   }
+
+  // The fallback path: a commit with no journal (what an older client sends, and
+  // what a run with an incomplete journal falls back to). The server can only
+  // score rounded canonical values here, so agreement is within one point —
+  // documented rather than hidden.
+  const noJournal = await put(`/api/companies/${companyId}/run`, authorityPayload(game), token)
+  const drift = Math.abs(Number(noJournal.body.score ?? 0) - performanceScore(game))
+  check('a commit without a journal is scored within one point', drift <= 1, `${noJournal.body.score} vs ${performanceScore(game)}`)
 
   const audit = await fetch(`${API}/api/companies/${companyId}/audit`, { headers: { authorization: `Bearer ${token}` } })
   const auditBody = (await audit.json()) as { verification?: { valid?: boolean; length?: number } }
